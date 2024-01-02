@@ -5,7 +5,7 @@
 
 /* === No MBC === */
 typedef struct nombc {
-    byte sbank[0x4000];
+    byte **banks;
     byte *ram;
 } nombc_t;
 
@@ -17,12 +17,12 @@ nombc_read(cart_t *cart, ushort addr)
 
     /* 0x0000 - 0x3FFF (ROM bank 0) */
     if (addr < 0x4000) {
-        ret = cart->bank[addr];
+        ret = data->banks[0][addr];
     }
 
     /* 0x4000 - 0x7FFF (ROM bank 1) */
     else if (addr < 0x8000) {
-        ret = data->sbank[addr - 0x4000];
+        ret = data->banks[1][addr - 0x4000];
     }
 
     /* 0xA000 - 0xBFFF (RAM if exists) */
@@ -32,9 +32,8 @@ nombc_read(cart_t *cart, ushort addr)
     }
 
     /* out of bounds address */
-    else {
+    else
         die("[nombc_read] address out of bounds");
-    }
 
     return ret;
 }
@@ -43,23 +42,33 @@ static void
 nombc_write(cart_t *cart, ushort addr, byte val)
 {
     /* out of bounds address */
-    if (addr >= 0xC000)
+    if ((addr >= 0x8000 && addr < 0xA000) || addr >= 0xC000)
         die("[nombc_write] address out of bounds");
 }
 
 static void
 nombc_init(cart_t *cart, FILE *file)
 {
-    /* TODO: implement RAM (is it needed?) */
     cart->read = nombc_read;
     cart->write = nombc_write;
     cart->mbc_data = malloc_or_die(sizeof(nombc_t), "nombc_init", "mbc_data");
 
     nombc_t *data = (nombc_t *)cart->mbc_data;
-    data->ram = NULL;
+    data->banks = malloc_or_die(2 * sizeof(void *), "nombc_init", "rom array");
+    data->banks[0] = cart->bank;
+    data->banks[1] = malloc_or_die(0x4000, "nombc_init", "rom bank");
 
-    if (!fread(data->sbank, 0x4000, 1, file))
-        die("[nombc_init] can't read second bank from file:");
+    /* 0x149 -> RAM size */
+    switch (cart->bank[0x149]) {
+        case 0x00:
+            data->ram = NULL;
+            break;
+        case 0x02:
+            data->ram = malloc_or_die(0x4000, "nombc_init", "ram bank");
+            break;
+        default:
+            die("[nombc_init] wrong RAM size");
+    }
 }
 
 /* === MBC1 === */
@@ -72,9 +81,13 @@ typedef struct mbc1 {
     uint nroms;
     uint nrams;
 
-    /* indexes in the banks */
-    uint currom;
-    uint curram;
+    /* registers */
+    byte currom; /* only last 5 bits are used */
+    byte curram; /* only last 2 bits are used */
+    byte mode; /* only last bit is used */
+
+    /* ram enable */
+    BOOL ram_enable;
 
     /* out of currom's 5 bits, only this number of bits is actually used for
      * calculating the current bank. this is needed because if the top discarded
@@ -84,21 +97,117 @@ typedef struct mbc1 {
 
     /* if this is set, curram bits are used as supplement for currom's bits */
     BOOL morerom;
-
-    /* simple vs advanced banking mode */
-    BOOL advanced;
 } mbc1_t;
+
+static uint
+mbc1_getfirstrombanknumber(mbc1_t *data)
+{
+    /* get bank index for 0000 - 3FFF zone */
+    uint ret;
+
+    /* if we're in advanced banking, we need to read the curram bits, otherwise
+     * it's always 0 */
+    if ((data->mode & MASK(1)) == 1)
+        ret = (data->curram & MASK(2)) << 5;
+    else
+        ret = 0;
+
+    return ret;
+}
+
+static uint
+mbc1_getsecondrombanknumber(mbc1_t *data)
+{
+    /* get bank index for 4000 - 7FFF zone */
+    /* first get the 5 bits: if they're 0, treat it as 1 */
+    uint ret = data->currom & MASK(5);
+    if (ret == 0)
+        ret = 1;
+
+    /* then only get the bits that are really needed */
+    ret &= MASK(data->bits_for_rom);
+
+    /* if we wired the RAM bits for ROM, add them now */
+    if (data->morerom)
+        ret |= ((data->curram & MASK(2)) << 5);
+
+    return ret;
+}
+
+static uint
+mbc1_getrambanknumber(mbc1_t *data)
+{
+    uint ret = (data->curram & MASK(2));
+
+    /* if we wired the RAM bits to ROM, bank number is always 0 */
+    if (data->morerom)
+        ret = 0;
+
+    return ret;
+}
 
 static byte
 mbc1_read(cart_t *cart, ushort addr)
 {
-    return 0xff;
+    mbc1_t *data = (mbc1_t *)cart->mbc_data;
+    byte ret = 0xff;
+    uint idx;
+
+    /* 0x0000 - 0x3FFF (ROM bank X0) */
+    if (addr < 0x4000) {
+        idx = mbc1_getfirstrombanknumber(data);
+        if (idx >= data->nroms)
+            die("[mbc1_read] tried to read invalid rom bank");
+        ret = data->roms[idx][addr];
+    }
+
+    /* 0x4000 - 0x7FFF (ROM bank 01-7F) */
+    else if (addr >= 0x4000 && addr < 0x8000) {
+        idx = mbc1_getsecondrombanknumber(data);
+        if (idx >= data->nroms)
+            die("[mbc1_read] tried to read invalid rom bank");
+        ret = data->roms[idx][addr - 0x4000];
+    }
+
+    /* 0xA000 - 0xBFFF (RAM bank 00-03) */
+    else if (addr >= 0xA000 && addr < 0xC000) {
+        idx = mbc1_getrambanknumber(data);
+        if (idx >= data->nrams)
+            die("[mbc1_read] tried to read invalid ram bank");
+        if (data->ram_enable)
+            ret = data->rams[idx][addr - 0xA000];
+    }
+
+    /* out of bounds address */
+    else
+        die("[mbc1_read] address out of bounds");
+
+    return ret;
 }
 
 static void
 mbc1_write(cart_t *cart, ushort addr, byte val)
 {
-    return;
+    mbc1_t *data = (mbc1_t *)cart->mbc_data;
+
+    /* 0x0000 - 0x1FFF (RAM Enable) */
+    if (addr < 0x2000)
+        data->ram_enable = val == 0xA;
+
+    /* 0x2000 - 0x3FFF (ROM Bank Number) */
+    else if (addr >= 0x2000 && addr < 0x4000)
+        data->currom = val;
+
+    /* 0x4000 - 0x5FFF (RAM Bank Number or Upper Bits */
+    else if (addr >= 0x4000 && addr < 0x6000)
+        data->curram = val;
+
+    /* 0x6000 - 0x7FFF (Banking Mode Select) */
+    else if (addr >= 0x6000 && addr < 0x8000)
+        data->mode = val;
+
+    else if ((addr >= 0x8000 && addr < 0xA000) || addr >= 0xC000)
+        die("[mbc1_write] address out of bounds");
 }
 
 static void
@@ -112,7 +221,8 @@ mbc1_init(cart_t *cart, FILE *file)
     mbc1_t *data = (mbc1_t *)cart->mbc_data;
     data->currom = 0;
     data->curram = 0;
-    data->advanced = FALSE;
+    data->mode = 0;
+    data->ram_enable = FALSE;
 
     /* 0x148 -> ROM size */
     switch(cart->bank[0x148]) {
@@ -157,7 +267,8 @@ mbc1_init(cart_t *cart, FILE *file)
 
     /* create the ROM banks */
     data->roms = malloc_or_die(data->nroms * sizeof(void *), "mbc1_init", "rom array");
-    for (int i = 0; i < data->nroms; i++) {
+    data->roms[0] = cart->bank;
+    for (int i = 1; i < data->nroms; i++) {
         data->roms[i] = malloc_or_die(0x4000, "mbc1_init", "rom");
         if (!fread(data->roms[i], 0x4000, 1, file))
             die("[mbc1_init] can't read bank from file");
@@ -212,6 +323,7 @@ void
 cart_init(cart_t *cart, gb_t *bus, FILE *file)
 {
     cart->bus = bus;
+    cart->bank = malloc_or_die(0x4000, "cart_init", "first bank");
 
     if (!fread(cart->bank, 0x4000, 1, file))
         die("[cart_init] can't read first bank from file:");

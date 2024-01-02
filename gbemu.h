@@ -13,6 +13,8 @@ typedef unsigned int uint;
 #define TRUE (1 == 1)
 #define FALSE (!TRUE)
 
+#define MASK(bits) ((1 << bits) - 1)
+
 typedef union reg reg_t;
 typedef struct gb gb_t;
 typedef struct cpu cpu_t;
@@ -67,8 +69,8 @@ struct cart {
     gb_t *bus;
     byte (*read)(cart_t *cart, ushort addr);
     void (*write)(cart_t *cart, ushort addr, byte val);
+    byte *bank; /* first bank is always present */
     void *mbc_data;    /* various mbc types have specific data */
-    byte bank[0x4000]; /* first bank is always present */
 };
 
 struct input {
