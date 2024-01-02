@@ -107,7 +107,7 @@ mbc1_getfirstrombanknumber(mbc1_t *data)
 
     /* if we're in advanced banking, we need to read the curram bits, otherwise
      * it's always 0 */
-    if ((data->mode & MASK(1)) == 1)
+    if (data->mode & MASK(1))
         ret = (data->curram & MASK(2)) << 5;
     else
         ret = 0;
@@ -139,8 +139,9 @@ mbc1_getrambanknumber(mbc1_t *data)
 {
     uint ret = (data->curram & MASK(2));
 
-    /* if we wired the RAM bits to ROM, bank number is always 0 */
-    if (data->morerom)
+    /* if we wired the RAM bits to ROM or we're in simple banking mode, bank
+     * number is always 0 */
+    if (data->morerom || !(data->mode & MASK(1)))
         ret = 0;
 
     return ret;
