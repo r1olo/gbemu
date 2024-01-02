@@ -219,45 +219,43 @@ mbc1_init(cart_t *cart, FILE *file)
     cart->mbc_data = malloc_or_die(sizeof(mbc1_t), "mbc1_init", "mbc_data");
 
     mbc1_t *data = (mbc1_t *)cart->mbc_data;
-    data->currom = 0;
-    data->curram = 0;
-    data->mode = 0;
+    data->currom = data->curram = data->mode = 0;
     data->ram_enable = FALSE;
 
     /* 0x148 -> ROM size */
     switch(cart->bank[0x148]) {
         case 0x00:
-            data->nroms = 1;
+            data->nroms = 2;
             data->bits_for_rom = 1;
             data->morerom = FALSE;
             break;
         case 0x01:
-            data->nroms = 3;
+            data->nroms = 4;
             data->bits_for_rom = 2;
             data->morerom = FALSE;
             break;
         case 0x02:
-            data->nroms = 7;
+            data->nroms = 8;
             data->bits_for_rom = 3;
             data->morerom = FALSE;
             break;
         case 0x03:
-            data->nroms = 15;
+            data->nroms = 16;
             data->bits_for_rom = 4;
             data->morerom = FALSE;
             break;
         case 0x04:
-            data->nroms = 31;
+            data->nroms = 32;
             data->bits_for_rom = 5;
             data->morerom = FALSE;
             break;
         case 0x05:
-            data->nroms = 63;
+            data->nroms = 64;
             data->bits_for_rom = 5;
             data->morerom = TRUE;
             break;
         case 0x06:
-            data->nroms = 127;
+            data->nroms = 128;
             data->bits_for_rom = 5;
             data->morerom = TRUE;
             break;
