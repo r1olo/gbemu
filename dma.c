@@ -6,19 +6,19 @@ dma_mmu_readb(dma_t *dma, ushort addr)
     byte ret = 0xff;
 
     /* 0x0000 - 0x7FFF (cart) */
-    if (addr < 0x8000)
+    if (IS_IN_RANGE(addr, 0x0000, 0x7FFF))
         ret = dma->bus->cart->read(dma->bus->cart, addr);
 
     /* 0x8000 - 0x9FFF (ppu) */
-    else if (addr >= 0x8000 && addr < 0xA000)
+    else if (IS_IN_RANGE(addr, 0x8000, 0x9FFF))
         ; /* ppu read */
 
     /* 0xA000 - 0xBFFF (cart) */
-    else if (addr >= 0xA000 && addr < 0xC000)
+    else if (IS_IN_RANGE(addr, 0xA000, 0xBFFF))
         ret = dma->bus->cart->read(dma->bus->cart, addr);
 
     /* 0xC000 - 0xDF96 (mem) */
-    else if (addr >= 0xC000 && addr < 0xDF97)
+    else if (IS_IN_RANGE(addr, 0xC000, 0xDFFF))
         ret = mem_readb(dma->bus->mem, addr);
 
     /* address out of bounds */
@@ -32,7 +32,7 @@ static void
 dma_mmu_writeb(dma_t *dma, ushort addr, byte val)
 {
     /* 0xFE00 - 0xFE9F (oam) */
-    if (addr >= 0xFE00 && addr < 0xFEA0)
+    if (IS_IN_RANGE(addr, 0xFE00, 0xFE9F))
         ; /* ppu write */
 
     /* address out of bounds */
@@ -56,7 +56,8 @@ dma_start(dma_t *dma, byte src)
     dma->src = src << 8;
 }
 
-void dma_cycle(dma_t *dma)
+void
+dma_cycle(dma_t *dma)
 {
     if (!dma_running(dma))
         return;

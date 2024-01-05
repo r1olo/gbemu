@@ -1,42 +1,77 @@
 #include "gbemu.h"
 
 static byte
+io_read(cpu_t *cpu, ushort addr)
+{
+    /* TODO */
+    byte ret = 0xff;
+
+    switch (addr) {
+        case 0xFF0F:
+            ret = cpu->if_;
+            break;
+        case 0xFF46:
+            break;
+        default:
+            die("[io_read] invalid I/O register: 0x%x", addr);
+    }
+
+    return ret;
+}
+
+static void
+io_write(cpu_t *cpu, ushort addr, byte val)
+{
+    /* TODO */
+    switch (addr) {
+        case 0xFF0F:
+            cpu->if_ = val;
+            break;
+        case 0xFF46:
+            dma_start(cpu->bus->dma, val);
+            break;
+        default:
+            die("[io_write] invalid I/O register: 0x%x", addr);
+    }
+}
+
+static byte
 mmu_readb(cpu_t *cpu, ushort addr)
 {
     byte ret = 0xff;
-    BOOL only_hram = dma_running(cpu->bus->dma);
+    BOOL hram_ok = !dma_running(cpu->bus->dma);
 
     /* 0x0000 - 0x7FFF (cart) */
-    if (only_hram && addr < 0x8000)
+    if (hram_ok && IS_IN_RANGE(addr, 0x0000, 0x7FFF))
         ret = cpu->bus->cart->read(cpu->bus->cart, addr);
 
     /* 0x8000 - 0x9FFF (ppu) */
-    else if (only_hram && addr >= 0x8000 && addr < 0xA000)
+    else if (hram_ok && IS_IN_RANGE(addr, 0x8000, 0x9FFF))
         ; /* ppu readb */
 
     /* 0xA000 - 0xBFFF (cart) */
-    else if (only_hram && addr >= 0xA000 && addr < 0xC000)
+    else if (hram_ok && IS_IN_RANGE(addr, 0xA000, 0xBFFF))
         ret = cpu->bus->cart->read(cpu->bus->cart, addr);
 
     /* 0xC000 - 0xFDFF (mem) */
-    else if (only_hram && addr >= 0xC000 && addr < 0xFE00)
+    else if (hram_ok && IS_IN_RANGE(addr, 0xC000, 0xFDFF))
         ret = mem_readb(cpu->bus->mem, addr);
 
     /* 0xFE00 - 0xFE9F (ppu) */
-    else if (only_hram && addr >= 0xFE00 && addr < 0xFEA0)
+    else if (hram_ok && IS_IN_RANGE(addr, 0xFE00, 0xFE9F))
         ; /* ppu readb */
 
     /* 0xFF00 - 0xFF7F (i/o) */
-    else if (only_hram && addr >= 0xFF00 && addr < 0xFF80)
-        ; /* TODO: static iomem functions */
+    else if (hram_ok && IS_IN_RANGE(addr, 0xFF00, 0xFF7F))
+        ret = io_read(cpu, addr);
 
     /* 0xFF80 - 0xFFFE (mem) */
-    else if (addr >= 0xFF80 && addr < 0xFFFF)
+    else if (IS_IN_RANGE(addr, 0xFF80, 0xFFFE))
         ret = mem_readb(cpu->bus->mem, addr);
 
-    /* 0xFFFF (cpu ime) */
+    /* 0xFFFF (interrupt enable) */
     else
-        ; /* TODO: cpu intr enable */
+        ret = cpu->ie;
 
     return ret;
 }
@@ -44,39 +79,39 @@ mmu_readb(cpu_t *cpu, ushort addr)
 static void
 mmu_writeb(cpu_t *cpu, ushort addr, byte val)
 {
-    BOOL only_hram = dma_running(cpu->bus->dma);
+    BOOL hram_ok = !dma_running(cpu->bus->dma);
 
     /* 0x0000 - 0x7FFF (cart) */
-    if (only_hram && addr < 0x8000)
+    if (hram_ok && IS_IN_RANGE(addr, 0x0000, 0x7FFF))
         cpu->bus->cart->write(cpu->bus->cart, addr, val);
 
     /* 0x8000 - 0x9FFF (ppu) */
-    else if (only_hram && addr >= 0x8000 && addr < 0xA000)
+    else if (hram_ok && IS_IN_RANGE(addr, 0x8000, 0x9FFF))
         ; /* ppu readb */
 
     /* 0xA000 - 0xBFFF (cart) */
-    else if (only_hram && addr >= 0xA000 && addr < 0xC000)
+    else if (hram_ok && IS_IN_RANGE(addr, 0xA000, 0xBFFF))
         cpu->bus->cart->write(cpu->bus->cart, addr, val);
 
     /* 0xC000 - 0xFDFF (mem) */
-    else if (only_hram && addr >= 0xC000 && addr < 0xFE00)
+    else if (hram_ok && IS_IN_RANGE(addr, 0xC000, 0xFDFF))
         mem_writeb(cpu->bus->mem, addr, val);
 
     /* 0xFE00 - 0xFE9F (ppu) */
-    else if (only_hram && addr >= 0xFE00 && addr < 0xFEA0)
+    else if (hram_ok && IS_IN_RANGE(addr, 0xFE00, 0xFE9F))
         ; /* ppu readb */
 
     /* 0xFF00 - 0xFF7F (i/o) */
-    else if (only_hram && addr >= 0xFF00 && addr < 0xFF80)
-        ; /* TODO: static iomem functions */
+    else if (hram_ok && IS_IN_RANGE(addr, 0xFF00, 0xFF7F))
+        io_write(cpu, addr, val);
 
     /* 0xFF80 - 0xFFFE (mem) */
-    else if (addr >= 0xFF80 && addr < 0xFFFF)
+    else if (IS_IN_RANGE(addr, 0xFF80, 0xFFFE))
         mem_writeb(cpu->bus->mem, addr, val);
 
-    /* 0xFFFF (cpu ime) */
+    /* 0xFFFF (interrupt enable) */
     else
-        ; /* TODO: cpu intr enable */
+        cpu->ie = val;
 }
 
 static ushort
@@ -338,7 +373,7 @@ enter_isr(cpu_t *cpu)
     if (!cpu->ime || !(ieflag & ifflag))
         return 0;
 
-    cpu->ime = 0;
+    cpu->ime = FALSE;
 
     if (CHECKINT(0)) { /* VBlank: bit 0 */
         mmu_writeb(cpu, 0xFF0F, CLEARIF(0));
@@ -1475,9 +1510,9 @@ cpu_step(cpu_t *cpu)
     byte op, tmpb, tmpb2;
     ushort tmps;
 
-    if (cpu->ei) {
-        cpu->ime = 1;
-        cpu->ei = 0;
+    if (cpu->ei_called) {
+        cpu->ime = TRUE;
+        cpu->ei_called = FALSE;
     }
 
     if (enter_isr(cpu)) {
@@ -1532,7 +1567,6 @@ cpu_step(cpu_t *cpu)
             mmu_writes(cpu, tmps, cpu->sp.val);
             c = 20;
             break;
-        case 0x09: /* ADD HL,BC */
             ADDREG(cpu->hl, cpu->bc);
             c = 8;
             break;
@@ -2479,7 +2513,7 @@ cpu_step(cpu_t *cpu)
             }
             break;
         case 0xD9: /* RETI */
-            cpu->ei = 1;
+            cpu->ei_called = TRUE;
             cpu->pc.val = POP();
             c = 16;
             break;
@@ -2597,8 +2631,8 @@ cpu_step(cpu_t *cpu)
             c = 8;
             break;
         case 0xF3: /* DI */
-            cpu->ei = 0;
-            cpu->ime = 0;
+            cpu->ei_called = FALSE;
+            cpu->ime = FALSE;
             c = 4;
             break;
         case 0xF4: /* Not implemented */
@@ -2639,7 +2673,7 @@ cpu_step(cpu_t *cpu)
             c = 16;
             break;
         case 0xFB: /* EI */
-            cpu->ei = 1;
+            cpu->ei_called = TRUE;
             c = 4;
             break;
         case 0xFC: /* Not implemented */
@@ -2661,7 +2695,8 @@ cpu_step(cpu_t *cpu)
     }
 
     if (!c)
-        die("[cpu_step] unknown opcode: %x", op);
+        die("[cpu_step] unknown opcode: 0x%x", op);
+
     return c;
 }
 
@@ -2678,13 +2713,14 @@ cpu_setup(cpu_t *cpu)
     cpu->hl.lo = 0x4d;
     cpu->pc.val = 0x0100;
     cpu->sp.val = 0xfffe;
-    cpu->ime = FALSE;
+    cpu->ie = cpu->if_ = 0;
+    cpu->ime = TRUE;
 }
 
 void
 cpu_init(cpu_t *cpu, gb_t *bus)
 {
     cpu->bus = bus;
-    cpu->halt = cpu->ei = FALSE;
+    cpu->halt = cpu->ei_called = FALSE;
     cpu_setup(cpu);
 }

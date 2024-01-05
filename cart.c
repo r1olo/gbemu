@@ -16,17 +16,17 @@ nombc_read(cart_t *cart, ushort addr)
     byte ret = 0xff;
 
     /* 0x0000 - 0x3FFF (ROM bank 0) */
-    if (addr < 0x4000) {
+    if (IS_IN_RANGE(addr, 0x0000, 0x3FFF)) {
         ret = data->banks[0][addr];
     }
 
     /* 0x4000 - 0x7FFF (ROM bank 1) */
-    else if (addr < 0x8000) {
+    else if (IS_IN_RANGE(addr, 0x4000, 0x7FFF)) {
         ret = data->banks[1][addr - 0x4000];
     }
 
     /* 0xA000 - 0xBFFF (RAM if exists) */
-    else if (addr >= 0xA000 && addr < 0xC000) {
+    else if (IS_IN_RANGE(addr, 0xA000, 0xBFFF)) {
         if (data->ram)
             ret = data->ram[addr - 0xA000];
     }
@@ -42,7 +42,7 @@ static void
 nombc_write(cart_t *cart, ushort addr, byte val)
 {
     /* out of bounds address */
-    if ((addr >= 0x8000 && addr < 0xA000) || addr >= 0xC000)
+    if (!IS_IN_RANGE(addr, 0x0000, 0x7FFF) || !IS_IN_RANGE(addr, 0xA000, 0xBFFF))
         die("[nombc_write] address out of bounds");
 }
 
@@ -190,22 +190,22 @@ mbc1_write(cart_t *cart, ushort addr, byte val)
     mbc1_t *data = (mbc1_t *)cart->mbc_data;
 
     /* 0x0000 - 0x1FFF (RAM Enable) */
-    if (addr < 0x2000)
+    if (IS_IN_RANGE(addr, 0x0000, 0x1FFF))
         data->ram_enable = val == 0xA;
 
     /* 0x2000 - 0x3FFF (ROM Bank Number) */
-    else if (addr >= 0x2000 && addr < 0x4000)
+    else if (IS_IN_RANGE(addr, 0x2000, 0x3FFF))
         data->currom = val;
 
     /* 0x4000 - 0x5FFF (RAM Bank Number or Upper Bits */
-    else if (addr >= 0x4000 && addr < 0x6000)
+    else if (IS_IN_RANGE(addr, 0x4000, 0x5FFF))
         data->curram = val;
 
     /* 0x6000 - 0x7FFF (Banking Mode Select) */
-    else if (addr >= 0x6000 && addr < 0x8000)
+    else if (IS_IN_RANGE(addr, 0x6000, 0x7FFF))
         data->mode = val;
 
-    else if ((addr >= 0x8000 && addr < 0xA000) || addr >= 0xC000)
+    else if (!IS_IN_RANGE(addr, 0x0000, 0x7FFF) || !IS_IN_RANGE(addr, 0xA000, 0xBFFF))
         die("[mbc1_write] address out of bounds");
 }
 

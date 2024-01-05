@@ -16,6 +16,9 @@ typedef unsigned int uint;
 #define BIT(n) (1 << n)
 #define MASK(bits) (BIT(bits) - 1)
 
+#define IS_IN_RANGE(addr, start, end) \
+    (addr >= start && addr <= end)
+
 typedef union reg reg_t;
 typedef struct gb gb_t;
 typedef struct cpu cpu_t;
@@ -52,7 +55,8 @@ struct cpu {
     /* gameboy's heart */
     gb_t *bus;
     reg_t af, bc, de, hl, sp, pc;
-    BOOL ei, halt, ime;
+    byte ie, if_;
+    BOOL ei_called, halt, ime;
 };
 
 struct mem {
@@ -92,6 +96,11 @@ struct input {
 struct tim {
     /* timer controller */
     gb_t *bus;
+    BOOL intr;
+    byte tima, tma, tac;
+    ushort div;
+    uint cycles;
+    BOOL phase1, phase2;
 };
 
 struct serial {
