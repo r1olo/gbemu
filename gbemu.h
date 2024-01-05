@@ -13,12 +13,14 @@ typedef unsigned int uint;
 #define TRUE (1 == 1)
 #define FALSE (!TRUE)
 
-#define MASK(bits) ((1 << bits) - 1)
+#define BIT(n) (1 << n)
+#define MASK(bits) (BIT(bits) - 1)
 
 typedef union reg reg_t;
 typedef struct gb gb_t;
 typedef struct cpu cpu_t;
 typedef struct mem mem_t;
+typedef struct dma dma_t;
 typedef struct ppu ppu_t;
 typedef struct cart cart_t;
 typedef struct input input_t;
@@ -38,6 +40,7 @@ struct gb {
      * the main bus */
     cpu_t *cpu;
     mem_t *mem;
+    dma_t *dma;
     ppu_t *ppu;
     cart_t *cart;
     input_t *input;
@@ -49,7 +52,7 @@ struct cpu {
     /* gameboy's heart */
     gb_t *bus;
     reg_t af, bc, de, hl, sp, pc;
-    BOOL ei, halt, _ime;
+    BOOL ei, halt, ime;
 };
 
 struct mem {
@@ -59,9 +62,17 @@ struct mem {
     byte hram[0x7F];
 };
 
+struct dma {
+    /* dma controller */
+    gb_t *bus;
+    uint cycles;
+    ushort src;
+};
+
 struct ppu {
     /* graphics controller */
     gb_t *bus;
+    byte oam[0xA0];
 };
 
 struct cart {
@@ -97,7 +108,15 @@ gb_t *gb_open(const char *path);
 void cpu_init(cpu_t *cpu, gb_t *bus);
 
 /* mem.c */
+byte mem_readb(mem_t *mem, ushort addr);
+void mem_writeb(mem_t *mem, ushort addr, byte val);
 void mem_init(mem_t *mem, gb_t *bus);
+
+/* dma.c */
+BOOL dma_running(dma_t *dma);
+void dma_start(dma_t *dma, byte src);
+void dma_cycle(dma_t *dma);
+void dma_init(dma_t *dma, gb_t *bus);
 
 /* ppu.c */
 void ppu_init(ppu_t *ppu, gb_t *bus);

@@ -103,14 +103,12 @@ static uint
 mbc1_getfirstrombanknumber(mbc1_t *data)
 {
     /* get bank index for 0000 - 3FFF zone */
-    uint ret;
+    uint ret = 0;
 
     /* if we're in advanced banking, we need to read the curram bits, otherwise
      * it's always 0 */
     if (data->mode & MASK(1))
         ret = (data->curram & MASK(2)) << 5;
-    else
-        ret = 0;
 
     return ret;
 }
@@ -291,12 +289,11 @@ mbc1_init(cart_t *cart, FILE *file)
     }
 
     /* create the RAM banks */
+    data->rams = NULL;
     if (data->nrams) {
         data->rams = malloc_or_die(data->nrams * sizeof(void *), "mbc1_init", "ram array");
         for (int i = 0; i < data->nrams; i++)
             data->rams[i] = malloc_or_die(0x4000, "mbc1_init", "ram");
-    } else {
-        data->rams = NULL;
     }
 }
 
