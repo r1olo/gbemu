@@ -3,6 +3,7 @@ CFLAGS = -Wall -Werror -O2
 PROGNAME = gbemu
 OBJS = main.o \
 	   cart.o \
+	   dma.o \
 	   cpu.o \
 	   gb.o \
 	   input.o \

@@ -2,12 +2,28 @@
 
 #include "gbemu.h"
 
+void
+gb_run_once(gb_t *gb)
+{
+    int c = cpu_step(gb->cpu);
+    for (int i = 0; i < c; i++) {
+        dma_cycle(gb->dma);
+    }
+}
+
+void
+gb_run_until_vsync(gb_t *gb)
+{
+    /* TODO */
+}
+
 gb_t *
 gb_create(FILE *file)
 {
     gb_t *gb = malloc_or_die(sizeof(gb_t), "gb_create", "gb");
     gb->cpu = malloc_or_die(sizeof(cpu_t), "gb_create", "cpu");
     gb->mem = malloc_or_die(sizeof(mem_t), "gb_create", "mem");
+    gb->dma = malloc_or_die(sizeof(dma_t), "gb_create", "dma");
     gb->ppu = malloc_or_die(sizeof(ppu_t), "gb_create", "ppu");
     gb->cart = malloc_or_die(sizeof(cart_t), "gb_create", "cart");
     gb->input = malloc_or_die(sizeof(input_t), "gb_create", "input");
@@ -16,6 +32,7 @@ gb_create(FILE *file)
 
     cpu_init(gb->cpu, gb);
     mem_init(gb->mem, gb);
+    dma_init(gb->dma, gb);
     ppu_init(gb->ppu, gb);
     cart_init(gb->cart, gb, file);
     input_init(gb->input, gb);
@@ -23,19 +40,6 @@ gb_create(FILE *file)
     serial_init(gb->serial, gb);
 
     return gb;
-}
-
-void
-gb_destroy(gb_t *gb)
-{
-    free(gb->cpu);
-    free(gb->mem);
-    free(gb->ppu);
-    free(gb->cart);
-    free(gb->input);
-    free(gb->tim);
-    free(gb->serial);
-    free(gb);
 }
 
 gb_t *

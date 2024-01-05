@@ -100,11 +100,13 @@ struct serial {
 };
 
 /* gb.c */
+void gb_run_once(gb_t *gb);
+void gb_run_until_vsync(gb_t *gb);
 gb_t *gb_create(FILE *file);
-void gb_destroy(gb_t *gb);
 gb_t *gb_open(const char *path);
 
 /* cpu.c */
+uint cpu_step(cpu_t *cpu);
 void cpu_init(cpu_t *cpu, gb_t *bus);
 
 /* mem.c */

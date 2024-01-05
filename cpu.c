@@ -1468,7 +1468,7 @@ prefix_instr(cpu_t *cpu)
     return c;
 }
 
-int
+uint
 cpu_step(cpu_t *cpu)
 {
     int c;
