@@ -1,6 +1,6 @@
 #include "gbemu.h"
 
-static int
+static uint
 get_freq_bit(byte tac)
 {
     uint ret, freq = tac & 3;
@@ -130,7 +130,7 @@ tim_cycle(tim_t *tim)
         return;
 
     /* increase TIMA if falling edge is detected */
-    int bit = get_freq_bit(tim->tac);
+    uint bit = get_freq_bit(tim->tac);
     if ((old_div & BIT(bit)) && !(tim->div & BIT(bit)))
         increase_tima(tim);
 }

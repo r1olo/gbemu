@@ -134,6 +134,9 @@ void dma_init(dma_t *dma, gb_t *bus);
 /* ppu.c */
 byte ppu_readb(ppu_t *ppu, ushort addr);
 void ppu_writeb(ppu_t *ppu, ushort addr, byte val);
+byte ppu_dma_readb(ppu_t *ppu, ushort addr);
+void ppu_dma_writeb(ppu_t *ppu, ushort addr, byte val);
+void ppu_cycle(ppu_t *ppu);
 void ppu_init(ppu_t *ppu, gb_t *bus);
 
 /* cart.c */

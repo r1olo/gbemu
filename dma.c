@@ -10,8 +10,10 @@ dma_mmu_readb(dma_t *dma, ushort addr)
         ret = dma->bus->cart->read(dma->bus->cart, addr);
 
     /* 0x8000 - 0x9FFF (ppu) */
-    else if (IS_IN_RANGE(addr, 0x8000, 0x9FFF))
-        ; /* ppu read */
+    else if (IS_IN_RANGE(addr, 0x8000, 0x9FFF)) {
+        /* let's assume DMA has full access to PPU's VRAM */
+        ret = ppu_dma_readb(dma->bus->ppu, addr);
+    }
 
     /* 0xA000 - 0xBFFF (cart) */
     else if (IS_IN_RANGE(addr, 0xA000, 0xBFFF))
@@ -32,8 +34,10 @@ static void
 dma_mmu_writeb(dma_t *dma, ushort addr, byte val)
 {
     /* 0xFE00 - 0xFE9F (oam) */
-    if (IS_IN_RANGE(addr, 0xFE00, 0xFE9F))
-        ; /* ppu write */
+    if (IS_IN_RANGE(addr, 0xFE00, 0xFE9F)) {
+        /* DMA has full access to PPU's OAM */
+        ppu_dma_writeb(dma->bus->ppu, addr, val);
+    }
 
     /* address out of bounds */
     else

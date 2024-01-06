@@ -85,6 +85,7 @@ io_write(cpu_t *cpu, ushort addr, byte val)
             break;
         case 0xFF07:
             tim_write_tac(cpu->bus->tim, val);
+            break;
         case 0xFF0F:
             write_ifflag(cpu, val);
             break;
@@ -425,14 +426,14 @@ mmu_writes(cpu_t *cpu, ushort addr, ushort val)
 #define CLEARIF(n) \
     (~(BIT(n) | ~ifflag))
 
-static int
+static BOOL
 enter_isr(cpu_t *cpu)
 {
     byte ieflag = cpu->ie,
          ifflag = read_ifflag(cpu);
 
     if (!cpu->ime || !(ieflag & ifflag))
-        return 0;
+        return FALSE;
 
     cpu->ime = FALSE;
 
@@ -458,7 +459,7 @@ enter_isr(cpu_t *cpu)
         cpu->pc.val = 0x60;
     }
 
-    return 1;
+    return TRUE;
 }
 
 static int
@@ -1578,7 +1579,7 @@ cpu_step(cpu_t *cpu)
 
     if (enter_isr(cpu)) {
         cpu->halt = 0;
-        return 5;
+        return 20;
     }
 
     if (cpu->halt)
@@ -2121,7 +2122,7 @@ cpu_step(cpu_t *cpu)
             c = 8;
             break;
         case 0x76: /* HALT */
-            cpu->halt = 1;
+            cpu->halt = TRUE;
             c = 4;
             break;
         case 0x77: /* LD (HL),A */
@@ -2775,7 +2776,7 @@ cpu_setup(cpu_t *cpu)
     cpu->pc.val = 0x0100;
     cpu->sp.val = 0xfffe;
     cpu->ie = 0;
-    cpu->ime = TRUE;
+    cpu->ime = FALSE;
 }
 
 void
