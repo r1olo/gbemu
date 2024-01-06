@@ -49,6 +49,7 @@ mem_writeb(mem_t *mem, ushort addr, byte val)
 void
 mem_init(mem_t *mem, gb_t *bus)
 {
-    /* TODO */
     mem->bus = bus;
+    mem->ram = malloc_or_die(0x2000, "mem_init", "ram");
+    mem->hram = malloc_or_die(0x7F, "mem_init", "hram");
 }

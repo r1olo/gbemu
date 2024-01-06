@@ -49,7 +49,7 @@ dma_running(dma_t *dma)
 void
 dma_start(dma_t *dma, byte src)
 {
-    if (dma_running(dma))
+    if (dma_running(dma) || src > 0xDF)
         return;
 
     dma->cycles = 0;

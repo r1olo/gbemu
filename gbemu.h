@@ -55,15 +55,14 @@ struct cpu {
     /* gameboy's heart */
     gb_t *bus;
     reg_t af, bc, de, hl, sp, pc;
-    byte ie, if_;
+    byte ie;
     BOOL ei_called, halt, ime;
 };
 
 struct mem {
     /* memory chip */
     gb_t *bus;
-    byte ram[0x2000];
-    byte hram[0x7F];
+    byte *ram, *hram;
 };
 
 struct dma {
@@ -76,7 +75,8 @@ struct dma {
 struct ppu {
     /* graphics controller */
     gb_t *bus;
-    byte oam[0xA0];
+    BOOL vblank_intr, stat_intr;
+    byte *vram, *oam;
 };
 
 struct cart {
@@ -91,6 +91,7 @@ struct cart {
 struct input {
     /* input controller */
     gb_t *bus;
+    BOOL intr;
 };
 
 struct tim {
@@ -106,6 +107,7 @@ struct tim {
 struct serial {
     /* serial controller */
     gb_t *bus;
+    BOOL intr;
 };
 
 /* gb.c */
@@ -130,6 +132,8 @@ void dma_cycle(dma_t *dma);
 void dma_init(dma_t *dma, gb_t *bus);
 
 /* ppu.c */
+byte ppu_readb(ppu_t *ppu, ushort addr);
+void ppu_writeb(ppu_t *ppu, ushort addr, byte val);
 void ppu_init(ppu_t *ppu, gb_t *bus);
 
 /* cart.c */
@@ -139,6 +143,11 @@ void cart_init(cart_t *cart, gb_t *bus, FILE *file);
 void input_init(input_t *input, gb_t *bus);
 
 /* tim.c */
+void tim_reset_div(tim_t *tim);
+void tim_write_tma(tim_t *tim, byte val);
+void tim_write_tima(tim_t *tim, byte val);
+void tim_write_tac(tim_t *tim, byte val);
+void tim_cycle(tim_t *tim);
 void tim_init(tim_t *tim, gb_t *bus);
 
 /* serial.c */

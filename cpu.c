@@ -1,14 +1,64 @@
 #include "gbemu.h"
 
 static byte
+read_ifflag(cpu_t *cpu)
+{
+    byte ret = 0;
+
+    /* VBlank: bit 0 */
+    if (cpu->bus->ppu->vblank_intr)
+        ret |= BIT(0);
+
+    /* LCD STAT: bit 1 */
+    if (cpu->bus->ppu->stat_intr)
+        ret |= BIT(1);
+
+    /* Timer: bit 2 */
+    if (cpu->bus->tim->intr)
+        ret |= BIT(2);
+
+    /* Serial: bit 3 */
+    if (cpu->bus->serial->intr)
+        ret |= BIT(3);
+
+    /* Joypad: bit 4 */
+    if (cpu->bus->input->intr)
+        ret |= BIT(4);
+
+    return ret;
+}
+
+static void
+write_ifflag(cpu_t *cpu, byte val)
+{
+    cpu->bus->ppu->vblank_intr = val & BIT(0);
+    cpu->bus->ppu->stat_intr = (val & BIT(1)) >> 1;
+    cpu->bus->tim->intr = (val & BIT(2)) >> 2;
+    cpu->bus->serial->intr = (val & BIT(3)) >> 3;
+    cpu->bus->input->intr = (val & BIT(4)) >> 4;
+}
+
+static byte
 io_read(cpu_t *cpu, ushort addr)
 {
     /* TODO */
     byte ret = 0xff;
 
     switch (addr) {
+        case 0xFF04:
+            ret = ((reg_t)cpu->bus->tim->div).hi;
+            break;
+        case 0xFF05:
+            ret = cpu->bus->tim->tima;
+            break;
+        case 0xFF06:
+            ret = cpu->bus->tim->tma;
+            break;
+        case 0xFF07:
+            ret = cpu->bus->tim->tac;
+            break;
         case 0xFF0F:
-            ret = cpu->if_;
+            ret = read_ifflag(cpu);
             break;
         case 0xFF46:
             break;
@@ -24,8 +74,19 @@ io_write(cpu_t *cpu, ushort addr, byte val)
 {
     /* TODO */
     switch (addr) {
+        case 0xFF04:
+            tim_reset_div(cpu->bus->tim);
+            break;
+        case 0xFF05:
+            tim_write_tima(cpu->bus->tim, val);
+            break;
+        case 0xFF06:
+            tim_write_tma(cpu->bus->tim, val);
+            break;
+        case 0xFF07:
+            tim_write_tac(cpu->bus->tim, val);
         case 0xFF0F:
-            cpu->if_ = val;
+            write_ifflag(cpu, val);
             break;
         case 0xFF46:
             dma_start(cpu->bus->dma, val);
@@ -47,7 +108,7 @@ mmu_readb(cpu_t *cpu, ushort addr)
 
     /* 0x8000 - 0x9FFF (ppu) */
     else if (hram_ok && IS_IN_RANGE(addr, 0x8000, 0x9FFF))
-        ; /* ppu readb */
+        ret = ppu_readb(cpu->bus->ppu, addr);
 
     /* 0xA000 - 0xBFFF (cart) */
     else if (hram_ok && IS_IN_RANGE(addr, 0xA000, 0xBFFF))
@@ -59,7 +120,7 @@ mmu_readb(cpu_t *cpu, ushort addr)
 
     /* 0xFE00 - 0xFE9F (ppu) */
     else if (hram_ok && IS_IN_RANGE(addr, 0xFE00, 0xFE9F))
-        ; /* ppu readb */
+        ret = ppu_readb(cpu->bus->ppu, addr);
 
     /* 0xFF00 - 0xFF7F (i/o) */
     else if (hram_ok && IS_IN_RANGE(addr, 0xFF00, 0xFF7F))
@@ -87,7 +148,7 @@ mmu_writeb(cpu_t *cpu, ushort addr, byte val)
 
     /* 0x8000 - 0x9FFF (ppu) */
     else if (hram_ok && IS_IN_RANGE(addr, 0x8000, 0x9FFF))
-        ; /* ppu readb */
+        ppu_writeb(cpu->bus->ppu, addr, val);
 
     /* 0xA000 - 0xBFFF (cart) */
     else if (hram_ok && IS_IN_RANGE(addr, 0xA000, 0xBFFF))
@@ -99,7 +160,7 @@ mmu_writeb(cpu_t *cpu, ushort addr, byte val)
 
     /* 0xFE00 - 0xFE9F (ppu) */
     else if (hram_ok && IS_IN_RANGE(addr, 0xFE00, 0xFE9F))
-        ; /* ppu readb */
+        ppu_writeb(cpu->bus->ppu, addr, val);
 
     /* 0xFF00 - 0xFF7F (i/o) */
     else if (hram_ok && IS_IN_RANGE(addr, 0xFF00, 0xFF7F))
@@ -367,8 +428,8 @@ mmu_writes(cpu_t *cpu, ushort addr, ushort val)
 static int
 enter_isr(cpu_t *cpu)
 {
-    byte ieflag = mmu_readb(cpu, 0xFFFF),
-         ifflag = mmu_readb(cpu, 0xFF0F);
+    byte ieflag = cpu->ie,
+         ifflag = read_ifflag(cpu);
 
     if (!cpu->ime || !(ieflag & ifflag))
         return 0;
@@ -376,23 +437,23 @@ enter_isr(cpu_t *cpu)
     cpu->ime = FALSE;
 
     if (CHECKINT(0)) { /* VBlank: bit 0 */
-        mmu_writeb(cpu, 0xFF0F, CLEARIF(0));
+        write_ifflag(cpu, CLEARIF(0));
         PUSH(cpu->pc.val);
         cpu->pc.val = 0x40;
     } else if (CHECKINT(1)) { /* LCD STAT: bit 1 */
-        mmu_writeb(cpu, 0xFF0F, CLEARIF(1));
+        write_ifflag(cpu, CLEARIF(1));
         PUSH(cpu->pc.val);
         cpu->pc.val = 0x48;
     } else if (CHECKINT(2)) { /* Timer: bit 2 */
-        mmu_writeb(cpu, 0xFF0F, CLEARIF(2));
+        write_ifflag(cpu, CLEARIF(2));
         PUSH(cpu->pc.val);
         cpu->pc.val = 0x50;
     } else if (CHECKINT(3)) { /* Serial: bit 3 */
-        mmu_writeb(cpu, 0xFF0F, CLEARIF(3));
+        write_ifflag(cpu, CLEARIF(3));
         PUSH(cpu->pc.val);
         cpu->pc.val = 0x58;
     } else { /* Joypad: bit 4 */
-        mmu_writeb(cpu, 0xFF0F, CLEARIF(4));
+        write_ifflag(cpu, CLEARIF(4));
         PUSH(cpu->pc.val);
         cpu->pc.val = 0x60;
     }
@@ -2713,7 +2774,7 @@ cpu_setup(cpu_t *cpu)
     cpu->hl.lo = 0x4d;
     cpu->pc.val = 0x0100;
     cpu->sp.val = 0xfffe;
-    cpu->ie = cpu->if_ = 0;
+    cpu->ie = 0;
     cpu->ime = TRUE;
 }
 

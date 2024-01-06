@@ -1,12 +1,5 @@
 #include "gbemu.h"
 
-static void
-tim_interrupt(tim_t *tim)
-{
-    /* Timer: bit 2 */
-    tim->bus->cpu->if_ |= BIT(2);
-}
-
 static int
 get_freq_bit(byte tac)
 {
@@ -127,7 +120,7 @@ tim_cycle(tim_t *tim)
         tim->phase1 = FALSE;
         tim->phase2 = TRUE;
         tim->tima = tim->tma;
-        tim_interrupt(tim);
+        tim->intr = TRUE;
     } else if (tim->phase2) {
         tim->phase2 = FALSE;
     }

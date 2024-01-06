@@ -153,7 +153,7 @@ mbc1_read(cart_t *cart, ushort addr)
     uint idx;
 
     /* 0x0000 - 0x3FFF (ROM bank X0) */
-    if (addr < 0x4000) {
+    if (IS_IN_RANGE(addr, 0x0000, 0x3FFF)) {
         idx = mbc1_getfirstrombanknumber(data);
         if (idx >= data->nroms)
             die("[mbc1_read] tried to read invalid rom bank");
@@ -161,7 +161,7 @@ mbc1_read(cart_t *cart, ushort addr)
     }
 
     /* 0x4000 - 0x7FFF (ROM bank 01-7F) */
-    else if (addr >= 0x4000 && addr < 0x8000) {
+    else if (IS_IN_RANGE(addr, 0x4000, 0x7FFF)) {
         idx = mbc1_getsecondrombanknumber(data);
         if (idx >= data->nroms)
             die("[mbc1_read] tried to read invalid rom bank");
@@ -169,7 +169,7 @@ mbc1_read(cart_t *cart, ushort addr)
     }
 
     /* 0xA000 - 0xBFFF (RAM bank 00-03) */
-    else if (addr >= 0xA000 && addr < 0xC000) {
+    else if (IS_IN_RANGE(addr, 0xA000, 0xBFFF)) {
         idx = mbc1_getrambanknumber(data);
         if (idx >= data->nrams)
             die("[mbc1_read] tried to read invalid ram bank");

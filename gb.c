@@ -5,7 +5,7 @@
 void
 gb_run_once(gb_t *gb)
 {
-    int c = cpu_step(gb->cpu);
+    uint c = cpu_step(gb->cpu);
     for (int i = 0; i < c; i++) {
         dma_cycle(gb->dma);
     }
