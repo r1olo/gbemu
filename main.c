@@ -11,7 +11,7 @@ main(int argc, char **argv)
     if (argc < 2)
         die("I need a ROM!");
 
-    gb_t *gb = gb_open(argv[1]);
+    gb_t *gb = gb_create(argv[1]);
     while (TRUE) {
         printf("==========================\n");
         printf("AF: 0x%x\n", gb->cpu->af.val);

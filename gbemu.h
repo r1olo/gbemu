@@ -113,8 +113,7 @@ struct serial {
 /* gb.c */
 void gb_run_once(gb_t *gb);
 void gb_run_until_vsync(gb_t *gb);
-gb_t *gb_create(FILE *file);
-gb_t *gb_open(const char *path);
+gb_t *gb_create(const char *rom);
 
 /* cpu.c */
 uint cpu_step(cpu_t *cpu);
@@ -140,7 +139,7 @@ void ppu_cycle(ppu_t *ppu);
 void ppu_init(ppu_t *ppu, gb_t *bus);
 
 /* cart.c */
-void cart_init(cart_t *cart, gb_t *bus, FILE *file);
+void cart_init(cart_t *cart, gb_t *bus, const char *rom);
 
 /* input.c */
 void input_init(input_t *input, gb_t *bus);

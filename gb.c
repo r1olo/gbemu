@@ -1,5 +1,3 @@
-#include <stdio.h>
-
 #include "gbemu.h"
 
 void
@@ -19,7 +17,7 @@ gb_run_until_vsync(gb_t *gb)
 }
 
 gb_t *
-gb_create(FILE *file)
+gb_create(const char *rom)
 {
     gb_t *gb = malloc_or_die(sizeof(gb_t), "gb_create", "gb");
     gb->cpu = malloc_or_die(sizeof(cpu_t), "gb_create", "cpu");
@@ -35,24 +33,10 @@ gb_create(FILE *file)
     mem_init(gb->mem, gb);
     dma_init(gb->dma, gb);
     ppu_init(gb->ppu, gb);
-    cart_init(gb->cart, gb, file);
+    cart_init(gb->cart, gb, rom);
     input_init(gb->input, gb);
     tim_init(gb->tim, gb);
     serial_init(gb->serial, gb);
 
-    return gb;
-}
-
-gb_t *
-gb_open(const char *path)
-{
-    gb_t *gb;
-    FILE *file = fopen(path, "rb");
-    
-    if (!file)
-        die("[gb_open] can't open cart file");
-
-    gb = gb_create(file);
-    fclose(file);
     return gb;
 }

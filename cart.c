@@ -316,13 +316,19 @@ select_mbc(cart_t *cart, FILE *file)
 }
 
 void
-cart_init(cart_t *cart, gb_t *bus, FILE *file)
+cart_init(cart_t *cart, gb_t *bus, const char *rom)
 {
     cart->bus = bus;
     cart->bank = malloc_or_die(0x4000, "cart_init", "first bank");
+
+    FILE *file = fopen(rom, "rb");
+    if (!file)
+        die("[cart_init] can't open ROM file");
 
     if (!fread(cart->bank, 0x4000, 1, file))
         die("[cart_init] can't read first bank from file:");
 
     select_mbc(cart, file);
+
+    fclose(file);
 }
