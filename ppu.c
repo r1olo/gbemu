@@ -39,6 +39,18 @@ ppu_dma_writeb(ppu_t *ppu, ushort addr, byte val)
     indirect_writeb(ppu, addr, val, FALSE);
 }
 
+static void
+push_pixel(ppu_t *ppu)
+{
+    /* this should push pixel to screen
+     * TODO: there are two queues? */
+    if (ppu->queue->len <= 8)
+        return;
+
+    pixel_t pixel = pqueue_remove(ppu->queue);
+    /* do something with pixel */
+}
+
 void
 ppu_cycle(ppu_t *ppu)
 {
@@ -52,4 +64,7 @@ ppu_init(ppu_t *ppu, gb_t *bus)
     ppu->vblank_intr = ppu->stat_intr = FALSE;
     ppu->vram = malloc_or_die(0x2000, "ppu_init", "vram");
     ppu->oam = malloc_or_die(0xA0, "ppu_init", "oam");
+
+    ppu->mode = VBLANK;
+    ppu->queue = pqueue_create();
 }

@@ -7,6 +7,7 @@ gb_run_once(gb_t *gb)
     for (int i = 0; i < c; i++) {
         dma_cycle(gb->dma);
         ppu_cycle(gb->ppu);
+        tim_cycle(gb->tim);
     }
 }
 

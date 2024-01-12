@@ -20,6 +20,10 @@ typedef unsigned int uint;
     (addr >= start && addr <= end)
 
 typedef union reg reg_t;
+typedef union pixel pixel_t;
+typedef struct pnode pnode_t;
+typedef struct pqueue pqueue_t;
+
 typedef struct gb gb_t;
 typedef struct cpu cpu_t;
 typedef struct mem mem_t;
@@ -30,12 +34,36 @@ typedef struct input input_t;
 typedef struct tim tim_t;
 typedef struct serial serial_t;
 
+enum ppu_mode {
+    HBLANK = 0,
+    VBLANK = 1,
+    OAM = 2,
+    DRAW = 3
+};
+
 union reg {
     struct {
         byte lo;
         byte hi;
     };
     ushort val;
+};
+
+union pixel {
+    struct {
+        byte b, g, r, a;
+    };
+    uint val;
+};
+
+struct pnode {
+    pixel_t pixel;
+    pnode_t *next;
+};
+
+struct pqueue {
+    uint len;
+    pnode_t *head;
 };
 
 struct gb {
@@ -77,6 +105,8 @@ struct ppu {
     gb_t *bus;
     BOOL vblank_intr, stat_intr;
     byte *vram, *oam;
+    enum ppu_mode mode;
+    pqueue_t *queue;
 };
 
 struct cart {
@@ -158,5 +188,9 @@ void serial_init(serial_t *serial, gb_t *bus);
 /* utils.c */
 void __attribute__((noreturn)) die(const char *fmt, ...);
 void *malloc_or_die(uint size, const char *fname, const char *name);
+pqueue_t *pqueue_create();
+void pqueue_put(pqueue_t *queue, pixel_t pixel);
+pixel_t pqueue_remove(pqueue_t *queue);
+void pqueue_clear(pqueue_t *queue);
 
 #endif /* H_GBEMU */
