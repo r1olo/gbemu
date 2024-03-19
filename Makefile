@@ -1,7 +1,8 @@
 CC = cc
-CFLAGS = -Wall -Werror -O2
+CFLAGS = -Wall -Werror -O3
 PROGNAME = gbemu
 OBJS = main.o \
+	   alloc.o \
 	   cart.o \
 	   dma.o \
 	   cpu.o \

@@ -21,7 +21,6 @@ typedef unsigned int uint;
 
 typedef union reg reg_t;
 typedef union pixel pixel_t;
-typedef struct pnode pnode_t;
 typedef struct pqueue pqueue_t;
 
 typedef struct gb gb_t;
@@ -33,6 +32,7 @@ typedef struct cart cart_t;
 typedef struct input input_t;
 typedef struct tim tim_t;
 typedef struct serial serial_t;
+typedef struct block block_t;
 
 enum ppu_mode {
     HBLANK = 0,
@@ -56,14 +56,10 @@ union pixel {
     uint val;
 };
 
-struct pnode {
-    pixel_t pixel;
-    pnode_t *next;
-};
-
 struct pqueue {
+    pixel_t queue[8];
+    size_t begin, end;
     uint len;
-    pnode_t *head;
 };
 
 struct gb {
@@ -140,6 +136,13 @@ struct serial {
     BOOL intr;
 };
 
+struct block {
+    size_t size;
+    void *ptr;
+    int free;
+    block_t *next;
+};
+
 /* gb.c */
 void gb_run_once(gb_t *gb);
 void gb_run_until_vsync(gb_t *gb);
@@ -189,8 +192,12 @@ void serial_init(serial_t *serial, gb_t *bus);
 void __attribute__((noreturn)) die(const char *fmt, ...);
 void *malloc_or_die(uint size, const char *fname, const char *name);
 pqueue_t *pqueue_create();
-void pqueue_put(pqueue_t *queue, pixel_t pixel);
-pixel_t pqueue_remove(pqueue_t *queue);
+void pqueue_push(pqueue_t *queue, pixel_t pixel);
+pixel_t pqueue_pop(pqueue_t *queue);
 void pqueue_clear(pqueue_t *queue);
+
+/* alloc.c */
+void *alloc_mem(size_t size);
+void free_mem(void *ptr);
 
 #endif /* H_GBEMU */

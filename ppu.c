@@ -47,13 +47,14 @@ push_pixel(ppu_t *ppu)
     if (ppu->queue->len <= 8)
         return;
 
-    pixel_t pixel = pqueue_remove(ppu->queue);
+    //pixel_t pixel = pqueue_remove(ppu->queue);
     /* do something with pixel */
 }
 
 void
 ppu_cycle(ppu_t *ppu)
 {
+    push_pixel(ppu);
 }
 
 void

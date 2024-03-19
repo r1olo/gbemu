@@ -1,3 +1,6 @@
+#include <stddef.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
 
@@ -24,7 +27,7 @@ die(const char *fmt, ...)
 void *
 malloc_or_die(uint size, const char *fname, const char *name)
 {
-    void *ret = malloc(size);
+    void *ret = alloc_mem(size);
 
     if (!ret)
         die("[%s] can't allocate %s:", fname, name);
@@ -35,51 +38,51 @@ malloc_or_die(uint size, const char *fname, const char *name)
 pqueue_t *
 pqueue_create()
 {
-    pqueue_t *queue = malloc_or_die(sizeof(pqueue_t), "pqueue_create", "queue");
-    queue->len = 0;
-    queue->head = NULL;
-    return queue;
+    pqueue_t *q = malloc_or_die(sizeof(pqueue_t), "pqueue_create", "queue");
+    q->begin = q->end = 0;
+    q->len = 0;
+    return q;
 }
 
 void
-pqueue_put(pqueue_t *queue, pixel_t pixel)
+pqueue_push(pqueue_t *queue, pixel_t pixel)
 {
-    pnode_t *node = malloc_or_die(sizeof(pnode_t), "pqueue_put", "node");
-    node->pixel = pixel;
-    node->next = NULL;
-    pnode_t *cur = queue->head;
-    while (cur && cur->next)
-        cur = cur->next;
-    if (!cur)
-        queue->head = node;
-    else
-        cur->next = node;
-    queue->len++;
+    size_t next_begin = queue->begin + 1;
+
+    if (next_begin == sizeof(queue->queue) / sizeof(pixel_t))
+        next_begin = 0;
+
+    if (next_begin == queue->end)
+        die("[pqueue_push] pixel queue is full");
+
+    queue->queue[queue->begin] = pixel;
+    queue->begin = next_begin;
+    ++queue->len;
 }
 
 pixel_t
-pqueue_remove(pqueue_t *queue)
+pqueue_pop(pqueue_t *queue)
 {
     pixel_t ret;
-    pnode_t *node;
-    if (!queue->len)
-        die("[pqueue_remove] pixel queue is empty");
-    node = queue->head;
-    ret = node->pixel;
-    queue->head = node->next;
-    queue->len--;
-    free(node);
+    size_t next_end;
+
+    if (queue->end == queue->begin)
+        die("[pqueue_pop] pixel queue is empty");
+
+    next_end = queue->end + 1;
+    if (queue->end == sizeof(queue->queue) / sizeof(pixel_t))
+        next_end = 0;
+
+    ret = queue->queue[queue->end];
+    queue->end = next_end;
+    --queue->len;
     return ret;
 }
 
 void
 pqueue_clear(pqueue_t *queue)
 {
-    pnode_t *cur;
-    while (queue->head) {
-        cur = queue->head;
-        queue->head = cur->next;
-        free(cur);
-    }
+    queue->begin = queue->end = 0;
     queue->len = 0;
 }
+
