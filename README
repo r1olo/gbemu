@@ -1,0 +1,2 @@
+This is a cycle-accurate GameBoy emulator written modularly in C. It can be
+used standalone or as a library. (WIP)
