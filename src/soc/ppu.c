@@ -47,8 +47,6 @@ _get_pixel_with_palette_and_color_id(uint8_t palette, uint8_t color_id)
         case 0x03:
             ret.val = BLACK;
             break;
-        default:
-            assert(false);
     }
 
     return ret;
@@ -527,17 +525,9 @@ _ppu_render(ppu_t *ppu)
 void
 ppu_cycle(ppu_t *ppu)
 {
-    /* if LCD is off, prepare for when it is turned on by setting LY = 0 and
-     * OAMSCAN. exit immediately (don't use _go_to_oamscan since we don't want
-     * to fire interrupts) */
-    if (!LCDC_PPU_ENABLE(ppu->lcdc)) {
-        ppu->ly = 0;
-        ppu->mode = PPU_OAMSCAN;
-        ppu->cycles_to_waste = 1;
-        ppu->cur_oam_idx = 0;
-        ppu->cur_objs = 0;
+    /* if LCD is powered off, do nothing */
+    if (!LCDC_PPU_ENABLE(ppu->lcdc))
         return;
-    }
 
     /* sample the current STAT line status (before stepping through the PPU) */
     bool old_stat = ppu->stat_mode || ppu->stat_lyc;

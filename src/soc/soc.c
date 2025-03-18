@@ -161,7 +161,7 @@ _soc_iomem_read(soc_t *soc, uint8_t addr)
             ret = soc->ppu->lcdc;
             break;
         case 0x41:
-            ppu_get_stat(soc->ppu);
+            ret = ppu_get_stat(soc->ppu);
             break;
         case 0x42:
             ret = soc->ppu->scy;
@@ -231,7 +231,7 @@ _soc_iomem_write(soc_t *soc, uint8_t addr, uint8_t val)
             soc->cpu->iflag = val | 0xE0;
             break;
         case 0x40:
-            soc->ppu->lcdc = val;
+            ppu_write_lcdc(soc->ppu, val);
             break;
         case 0x41:
             ppu_set_stat(soc->ppu, val);

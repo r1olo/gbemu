@@ -512,6 +512,20 @@ ppu_set_stat(ppu_t *ppu, uint8_t val)
     ppu->lyc_int = val & 0x40;
 }
 
+static inline void
+ppu_write_lcdc(ppu_t *ppu, uint8_t val)
+{
+    /* if LCD is turned off, reset it for good */
+    if (!LCDC_PPU_ENABLE(val)) {
+        ppu->ly = 0;
+        ppu->mode = PPU_HBLANK;
+        ppu->cycles_to_waste = 1;
+    }
+
+    /* set normal LCDC */
+    ppu->lcdc = val;
+}
+
 void ppu_cycle(ppu_t *ppu);
 void ppu_init(ppu_t *ppu, soc_t *soc);
 
