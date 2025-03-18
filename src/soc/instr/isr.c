@@ -53,7 +53,7 @@ _push_low_pc_ack_interrupt(cpu_t *cpu)
     }
 
     /* check for interrupt in order */
-    for (uint i = 0; i < 5; ++i) {
+    for (size_t i = 0; i < 5; ++i) {
         /* if we find an interrupt, break out of the loop */
         if (ints & BIT(i)) {
             cpu->pc.val = 0x0040 + 8 * i;

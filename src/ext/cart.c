@@ -182,7 +182,7 @@ static inline uint
 _mbc1_get_cur_rom(struct mbc1 *mbc1_data)
 {
     /* current ROM bank */
-    uint cur_rom = mbc1_data->cur_bank & mbc1_data->nbanks;
+    unsigned cur_rom = mbc1_data->cur_bank & mbc1_data->nbanks;
     if ((mbc1_data->cur_bank & 0x1F) == 0)
         cur_rom = 1;
 
@@ -202,7 +202,7 @@ mbc1_read_rom(cart_t *cart, uint16_t addr)
     struct mbc1 *mbc1_data = (struct mbc1 *)cart->mbc_data;
 
     /* get current rom */
-    uint cur_rom = _mbc1_get_cur_rom(mbc1_data);
+    unsigned cur_rom = _mbc1_get_cur_rom(mbc1_data);
 
     /* if current rom is 0, read from first bank */
     if (cur_rom == 0)

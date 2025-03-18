@@ -272,7 +272,7 @@ static inline void
 _fetch_bg_tile_id(ppu_t *ppu)
 {
     /* discard the first 8 tiles */
-    uint fetcher_x = ppu->fetcher_x < 0 ? 0 : ppu->fetcher_x;
+    unsigned fetcher_x = ppu->fetcher_x < 0 ? 0 : ppu->fetcher_x;
 
     /* calculate tile map address */
     uint16_t addr = LCDC_BG_TILEMAP(ppu->lcdc) ? 0x9C00 : 0x9800;

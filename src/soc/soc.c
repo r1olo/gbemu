@@ -365,7 +365,7 @@ soc_cycle(soc_t *soc)
 uint
 soc_step(soc_t *soc)
 {
-    uint c = 4;
+    unsigned c = 4;
     for (size_t i = 0; i < 4; ++i) {
         soc_cycle(soc);
         ++c;
@@ -383,7 +383,7 @@ uint
 soc_run_until_vblank(soc_t *soc)
 {
     /* total cycles */
-    uint c = 0;
+    unsigned c = 0;
 
     /* if PPU is disabled, just step once (TODO: think) */
     if (!LCDC_PPU_ENABLE(soc->ppu->lcdc)) {

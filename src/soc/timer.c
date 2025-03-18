@@ -1,7 +1,7 @@
 #include "soc/soc.h"
 #include "types.h"
 
-static inline uint
+static inline unsigned
 _get_freq_bit(uint8_t clock)
 {
     assert(clock <= 3);
@@ -55,13 +55,13 @@ tim_cycle(tim_t *tim)
         soc_interrupt(tim->soc, INT_TIMER);
     } else {
         /* currently selected bit */
-        uint bit = _get_freq_bit(TAC_CLOCK(tim->tac));
+        unsigned bit = _get_freq_bit(TAC_CLOCK(tim->tac));
 
         /* if timer is not enabled, the SYS falling edge doesn't work. if we
          * *just* disabled the timer, however, it will cause a TIMA tick if the
          * currently selected bit is set (DMG stuff) */
         if (TAC_ENABLE(tim->tac)) {
-            uint old_bit = _get_freq_bit(TAC_CLOCK(tim->old_tac));
+            unsigned old_bit = _get_freq_bit(TAC_CLOCK(tim->old_tac));
             if (old_sys & BIT(old_bit) && !(tim->sys & BIT(bit)))
                 ++tim->tima;
         } else {
