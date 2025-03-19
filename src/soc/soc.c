@@ -362,7 +362,7 @@ soc_cycle(soc_t *soc)
     }
 }
 
-uint
+unsigned
 soc_step(soc_t *soc)
 {
     unsigned c = 4;
@@ -379,7 +379,7 @@ soc_step(soc_t *soc)
     return c;
 }
 
-uint
+unsigned
 soc_run_until_vblank(soc_t *soc)
 {
     /* total cycles */

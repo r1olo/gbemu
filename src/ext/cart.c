@@ -178,7 +178,7 @@ free_data:
     return err;
 }
 
-static inline uint
+static inline unsigned
 _mbc1_get_cur_rom(struct mbc1 *mbc1_data)
 {
     /* current ROM bank */
