@@ -80,8 +80,10 @@ int main(int argc, char *argv[])
     if (argc < 2)
         exit(1);
 
+#ifndef NDEBUG
     if (argc > 2 && !strcmp(argv[2], "-v"))
         _cur_log_lvl = LOG_VERBOSE;
+#endif /* NDEBUG */
 
     cart_t *cart;
     enum gb_err res = cart_create(&cart, argv[1]);

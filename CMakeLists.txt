@@ -35,7 +35,7 @@ set(SRC_FILES
     src/ext/ext_bus.c
     src/ext/mem.h
     src/ext/vid_bus.c
-    src/log.c
+    $<$<NOT:$<CONFIG:RELEASE>>:src/log.c>
     src/log.h
     src/types.h
     src/soc/cpu.c

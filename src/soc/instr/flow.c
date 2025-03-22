@@ -5,6 +5,7 @@
 static bool
 _is_cond_true(cpu_t *cpu, uint8_t val)
 {
+    assert(val <= 3);
     switch (val) {
         case 0x00:
             return !FLAG_ZERO();
@@ -14,9 +15,9 @@ _is_cond_true(cpu_t *cpu, uint8_t val)
             return !FLAG_CARRY();
         case 0x03:
             return FLAG_CARRY();
+        default:
+            unreachable();
     }
-
-    assert(false);
 }
 
 static void

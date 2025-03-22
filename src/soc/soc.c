@@ -202,12 +202,15 @@ _soc_iomem_read(soc_t *soc, uint8_t addr)
 static inline void
 _soc_iomem_write(soc_t *soc, uint8_t addr, uint8_t val)
 {
+#ifndef NDEBUG
     static char serial = 0;
+#endif /* NDEBUG */
     /* do something based on address */
     switch (addr) {
         case 0x00:
             jp_write(soc->jp, val);
             break;
+#ifndef NDEBUG
         case 0x01:
             serial = val;
             break;
@@ -215,6 +218,7 @@ _soc_iomem_write(soc_t *soc, uint8_t addr, uint8_t val)
             if (val == 0x81)
                 LOG(LOG_ERR, "serial output: %c", serial);
             break;
+#endif /* NDEBUG */
         case 0x04:
             tim_write_div(soc->tim);
             break;
