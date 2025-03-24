@@ -22,7 +22,7 @@ _get_vid_bus_priority(soc_t *soc)
         return PRIO_DMA;
 
     /* PPU is running and is using video bus */
-    if (LCDC_PPU_ENABLE(soc->ppu->lcdc) && soc->ppu->mode == PPU_RENDER)
+    if (LCDC_PPU_ENABLE(soc->ppu->lcdc) && soc->ppu->next_mode == PPU_RENDER)
         return PRIO_PPU;
 
     /* video bus is free */
@@ -38,7 +38,8 @@ _get_oam_bus_priority(soc_t *soc)
 
     /* PPU is running and is using OAM */
     if (LCDC_PPU_ENABLE(soc->ppu->lcdc) &&
-            (soc->ppu->mode == PPU_OAMSCAN || soc->ppu->mode == PPU_RENDER))
+            (soc->ppu->next_mode == PPU_OAMSCAN
+             || soc->ppu->next_mode == PPU_RENDER))
         return PRIO_PPU;
 
     /* OAM is free */

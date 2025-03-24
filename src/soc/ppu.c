@@ -86,9 +86,6 @@ _go_to_oamscan(ppu_t *ppu)
     ppu->cycles_to_waste = 1;
     ppu->cur_oam_idx = 0;
     ppu->cur_objs = 0;
-
-    /* the first cycle must trigger the STAT interrupt */
-    ppu->oam_int = false;
 }
 
 static inline void
@@ -107,9 +104,6 @@ _go_to_render(ppu_t *ppu)
     ppu->sprite_hit = false;
     ppu->render_cycles = 0;
 
-    /* waste an extra cycle after OAMSCAN */
-    ppu->cycles_to_waste = 1;
-
     /* init obj queue with transparent object pixels */
     for (size_t i = 0; i < 8; ++i)
         ppu->obj_queue[i] = 0x00;
@@ -125,9 +119,6 @@ _go_to_hblank(ppu_t *ppu)
     /* get ready for HBLANK */
     ppu->mode = PPU_HBLANK;
     ppu->cycles_to_waste = 375 - ppu->render_cycles;
-
-    /* the first cycle must trigger the STAT interrupt */
-    ppu->hblank_int = false;
 }
 
 static inline void
@@ -136,39 +127,18 @@ _go_to_vblank(ppu_t *ppu)
     /* get ready for VBLANK */
     ppu->mode = PPU_VBLANK;
     ppu->cycles_to_waste = 455;
-
-    /* the first cycle must trigger the STAT interrupt and the normal interrupt
-     */
-    ppu->vblank_int = false;
 }
 
 static void
 _ppu_vblank(ppu_t *ppu)
 {
-    /* fire the VBLANK interrupts if enabled */
-    if (!ppu->vblank_int) {
-        /* STAT interrupt */
-        if (ppu->vblank_int_enabled)
-            ppu->stat_mode = true;
-        else
-            ppu->stat_mode = false;
-
-        /* fire the normal VBLANK interrupt */
-        soc_interrupt(ppu->soc, INT_VBLANK);
-
-        ppu->vblank_int = true;
-    }
-
-    /* set shown mode */
-    ppu->shown_mode = PPU_VBLANK;
-
     /* if there are more cycles to waste, do it and return */
     WASTE_CYCLES(ppu);
 
     /* if LY goes to 154 go to OAMSCAN, otherwise wait another round */
     if (++ppu->ly > 153) {
         ppu->ly = 0;
-        _go_to_oamscan(ppu);
+        ppu->next_mode = PPU_OAMSCAN;
     } else {
         ppu->cycles_to_waste = 455;
     }
@@ -177,56 +147,32 @@ _ppu_vblank(ppu_t *ppu)
 static void
 _ppu_hblank(ppu_t *ppu)
 {
-    /* fire the STAT interrupt if enabled */
-    if (!ppu->hblank_int) {
-        if (ppu->hblank_int_enabled)
-            ppu->stat_mode = true;
-        else
-            ppu->stat_mode = false;
-
-        ppu->hblank_int = true;
-    }
-
-    /* set shown mode */
-    ppu->shown_mode = PPU_HBLANK;
-
     /* if there are more cycles to waste, do it and return */
     WASTE_CYCLES(ppu);
 
     /* get ready for either another round of OAMSCAN or VBLANK */
     if (++ppu->ly > 143) {
-        _go_to_vblank(ppu);
+        ppu->next_mode = PPU_VBLANK;
     } else {
-        _go_to_oamscan(ppu);
+        ppu->next_mode = PPU_OAMSCAN;
     }
 }
 
 static void
 _ppu_oamscan(ppu_t *ppu)
 {
-    /* fire STAT interrupt if enabled */
-    if (!ppu->oam_int) {
-        if (ppu->oam_int_enabled)
-            ppu->stat_mode = true;
-        else
-            ppu->stat_mode = false;
-        ppu->oam_int = true;
-    }
-
-    /* set shown mode */
-    ppu->shown_mode = PPU_OAMSCAN;
-
     /* if there are more cycles to waste, do it and return */
     WASTE_CYCLES(ppu);
 
     /* if cur_oam_idx is 40, exit OAMSCAN and enter RENDER */
     if (ppu->cur_oam_idx > 39) {
-        _go_to_render(ppu);
+        ppu->next_mode = PPU_RENDER;
         return;
     }
 
     /* TODO: two bus reads in one cycle. this should be split in two different
-     * cycles */
+     * cycles. this also fixes having to switch mode above with an early return
+     */
 
     /* current OAM address */
     uint8_t cur_addr = ppu->cur_oam_idx * 4;
@@ -520,12 +466,6 @@ _ppu_pusher(ppu_t *ppu)
 static void
 _ppu_render(ppu_t *ppu)
 {
-    /* set shown mode after wasting cycles */
-    ppu->shown_mode = PPU_RENDER;
-
-    /* this always disables the current STAT mode line */
-    ppu->stat_mode = false;
-
     /* Pusher/LCD is clocked when:
      *      - BG queue is not empty
      *      - Sprite is not hit
@@ -560,7 +500,41 @@ _ppu_render(ppu_t *ppu)
 
     /* if LX goes to 168, we can start the HBLANK phase */
     if (ppu->lx > 167)
-        _go_to_hblank(ppu);
+        ppu->next_mode = PPU_HBLANK;
+}
+
+static inline void
+_prepare_mode_switch(ppu_t *ppu)
+{
+    /* if there's no switch requested, return */
+    if (ppu->mode == ppu->next_mode)
+        return;
+
+    /* prepare next mode and fire interrupts */
+    bool stat_int = false;
+    switch (ppu->next_mode) {
+        case PPU_HBLANK:
+            stat_int = ppu->hblank_int_enabled;
+            _go_to_hblank(ppu);
+            break;
+        case PPU_VBLANK:
+            stat_int = ppu->vblank_int_enabled;
+            soc_interrupt(ppu->soc, INT_VBLANK);
+            _go_to_vblank(ppu);
+            break;
+        case PPU_OAMSCAN:
+            stat_int = ppu->oam_int_enabled;
+            _go_to_oamscan(ppu);
+            break;
+        case PPU_RENDER:
+            _go_to_render(ppu);
+            break;
+        default:
+            assert(false);
+    }
+
+    /* turn on or off the STAT line for mode */
+    ppu->stat_mode = stat_int;
 }
 
 void
@@ -572,6 +546,9 @@ ppu_cycle(ppu_t *ppu)
 
     /* sample the current STAT line status (before stepping through the PPU) */
     bool old_stat = ppu->stat_mode || ppu->stat_lyc;
+
+    /* if we need to advance mode, prepare the PPU */
+    _prepare_mode_switch(ppu);
 
     /* see the status */
     switch (ppu->mode) {
@@ -635,7 +612,6 @@ ppu_init(ppu_t *ppu, soc_t *soc)
     /* set initial interrupt sources */
     ppu->lyc_int_enabled = ppu->oam_int_enabled = false;
     ppu->vblank_int_enabled = ppu->hblank_int_enabled = false;
-    ppu->vblank_int = ppu->hblank_int = ppu->oam_int = false;
 
     /* fill the screen with white pixels */
     memset(ppu->screen, 0xFF, SCREEN_HEIGHT * SCREEN_WIDTH);
@@ -643,6 +619,6 @@ ppu_init(ppu_t *ppu, soc_t *soc)
     /* initially, the two STAT sources are off */
     ppu->stat_mode = ppu->stat_lyc = false;
 
-    /* the current shown mode is VBLANK */
-    ppu->shown_mode = PPU_VBLANK;
+    /* next mode is currently the same */
+    ppu->next_mode = PPU_VBLANK;
 }

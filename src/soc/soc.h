@@ -292,13 +292,10 @@ typedef struct ppu {
      * interrupts the CPU if it goes high from low (STAT blocking) */
     bool stat_mode, stat_lyc;
 
-    /* whether the interrupts have to be fired at the first cycle of the new
-     * mode */
-    bool hblank_int, vblank_int, oam_int;
-
-    /* currently shown mode (for the STAT register). apparently the STAT shows a
-     * certain mode only after its first cycle has executed */
-    uint8_t shown_mode;
+    /* the next mode. the PPU's mode is actually changed at the first cycle of
+     * that mode. at the end of the last VBLANK cycle, for example, the CPU
+     * still reads VBLANK */
+    enum ppu_mode next_mode;
 } ppu_t;
 
 /* the possible CPU states */
@@ -509,7 +506,7 @@ static inline uint8_t
 ppu_get_stat(ppu_t *ppu)
 {
     uint8_t ret = 0x80;
-    ret |= LCDC_PPU_ENABLE(ppu->lcdc) ? ppu->shown_mode & 0x03 : 0;
+    ret |= LCDC_PPU_ENABLE(ppu->lcdc) ? ppu->mode & 0x03 : 0;
     ret |= (ppu->lyc == ppu->ly) << 2;
     ret |= ppu->hblank_int_enabled << 3;
     ret |= ppu->vblank_int_enabled << 4;
