@@ -88,10 +88,7 @@ cpu_cycle(cpu_t *cpu)
         return;
 
     /* if we have pending cycles exhaust them */
-    if (cpu->cycles_to_waste) {
-        --cpu->cycles_to_waste;
-        return;
-    }
+    WASTE_CYCLES(cpu);
 
     /* make sure we have a valid instruction list and a valid function */
     assert(cpu->curlist && cpu->curlist[cpu->state].fn);

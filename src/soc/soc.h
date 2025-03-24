@@ -19,6 +19,13 @@
 #define INT_SERIAL  (BIT(3))
 #define INT_JP      (BIT(4))
 
+/* quick macro to waste cycles */
+#define WASTE_CYCLES(x)         \
+    if ((x)->cycles_to_waste) { \
+        --(x)->cycles_to_waste; \
+        return;                 \
+    }
+
 /* this represents the bus's status for the current cycle */
 typedef enum bus_prio {
     PRIO_DMA,
@@ -215,16 +222,17 @@ typedef struct ppu {
     uint8_t wx, wy;
 
     /* sources of interrupts */
-    bool lyc_int, oam_int, vblank_int, hblank_int;
+    bool lyc_int_enabled, oam_int_enabled,
+         vblank_int_enabled, hblank_int_enabled;
 
     /* sprite store with X coords (matchers) */
     obj_store_entry_t objs[10];
 
     /* current index in the OAM */
-    unsigned cur_oam_idx;
+    size_t cur_oam_idx;
 
     /* how many objects are in the current scanline */
-    unsigned cur_objs;
+    size_t cur_objs;
 
     /* fetcher mode */
     enum ppu_fetcher_mode fetcher_mode;
@@ -283,6 +291,14 @@ typedef struct ppu {
     /* the STAT sources. these two are ORed together into a single line which
      * interrupts the CPU if it goes high from low (STAT blocking) */
     bool stat_mode, stat_lyc;
+
+    /* whether the interrupts have to be fired at the first cycle of the new
+     * mode */
+    bool hblank_int, vblank_int, oam_int;
+
+    /* currently shown mode (for the STAT register). apparently the STAT shows a
+     * certain mode only after its first cycle has executed */
+    uint8_t shown_mode;
 } ppu_t;
 
 /* the possible CPU states */
@@ -493,12 +509,12 @@ static inline uint8_t
 ppu_get_stat(ppu_t *ppu)
 {
     uint8_t ret = 0x80;
-    ret |= ppu->mode & 0x03;
+    ret |= LCDC_PPU_ENABLE(ppu->lcdc) ? ppu->shown_mode & 0x03 : 0;
     ret |= (ppu->lyc == ppu->ly) << 2;
-    ret |= ppu->hblank_int << 3;
-    ret |= ppu->vblank_int << 4;
-    ret |= ppu->oam_int << 5;
-    ret |= ppu->lyc_int << 6;
+    ret |= ppu->hblank_int_enabled << 3;
+    ret |= ppu->vblank_int_enabled << 4;
+    ret |= ppu->oam_int_enabled << 5;
+    ret |= ppu->lyc_int_enabled << 6;
     return ret;
 }
 
@@ -506,10 +522,10 @@ static inline void
 ppu_set_stat(ppu_t *ppu, uint8_t val)
 {
     /* TODO: implement spurious STAT interrupts */
-    ppu->hblank_int = val & 0x08;
-    ppu->vblank_int = val & 0x10;
-    ppu->oam_int = val & 0x20;
-    ppu->lyc_int = val & 0x40;
+    ppu->hblank_int_enabled = val & 0x08;
+    ppu->vblank_int_enabled = val & 0x10;
+    ppu->oam_int_enabled = val & 0x20;
+    ppu->lyc_int_enabled = val & 0x40;
 }
 
 static inline void
@@ -520,6 +536,7 @@ ppu_write_lcdc(ppu_t *ppu, uint8_t val)
         ppu->ly = 0;
         ppu->mode = PPU_HBLANK;
         ppu->cycles_to_waste = 1;
+        ppu->stat_mode = ppu->stat_lyc = false;
     }
 
     /* set normal LCDC */

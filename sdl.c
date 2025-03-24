@@ -1,6 +1,7 @@
 #include <SDL2/SDL_keycode.h>
 #include <stdlib.h>
 #include <SDL2/SDL.h>
+#include <unistd.h>
 
 #include "ext/bus.h"
 #include "ext/cart.h"
@@ -171,7 +172,8 @@ int main(int argc, char *argv[])
         soc->jp->start_pressed = keys[SDL_SCANCODE_RETURN];
         soc->jp->select_pressed = keys[SDL_SCANCODE_S];
 
-        soc_run_one_frame(soc);
+        //soc_run_one_frame(soc);
+        soc_run_until_vblank(soc);
 
         if (SDL_LockTexture(texture, NULL, &texture_pixels, &pitch)) {
             SDL_Log("unable to lock texture: %s", SDL_GetError());
@@ -184,6 +186,9 @@ int main(int argc, char *argv[])
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
+
+        /* sleep (vblank delay) */
+        //usleep(16949);
     }
 
     free(mem);

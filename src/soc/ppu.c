@@ -1,12 +1,6 @@
 #include "soc/soc.h"
 #include "log.h"
 
-#define WASTE_CYCLES() \
-    if (ppu->cycles_to_waste) { \
-        --ppu->cycles_to_waste; \
-        return; \
-    }
-
 #ifndef GREEN
 #define WHITE       0xFFFFFFFF
 #define LIGHT_GRAY  0xD3D3D3FF
@@ -22,7 +16,7 @@
 static inline void
 _check_lyc_stat_interrupt(ppu_t *ppu)
 {
-    if (ppu->lyc_int && ppu->ly == ppu->lyc)
+    if (ppu->lyc_int_enabled && ppu->ly == ppu->lyc)
         ppu->stat_lyc = true;
     else
         ppu->stat_lyc = false;
@@ -53,7 +47,7 @@ _get_pixel_with_palette_and_color_id(uint8_t palette, uint8_t color_id)
 }
 
 static void
-extract_color_ids_from_bitplane(uint8_t *row, uint8_t low, uint8_t high)
+_extract_color_ids_from_bitplane(uint8_t *row, uint8_t low, uint8_t high)
 {
     for (size_t i = 0; i < 8; ++i) {
         size_t bit_idx = 7 - i;
@@ -93,11 +87,8 @@ _go_to_oamscan(ppu_t *ppu)
     ppu->cur_oam_idx = 0;
     ppu->cur_objs = 0;
 
-    /* fire the STAT interrupt if enabled */
-    if (ppu->oam_int)
-        ppu->stat_mode = true;
-    else
-        ppu->stat_mode = false;
+    /* the first cycle must trigger the STAT interrupt */
+    ppu->oam_int = false;
 }
 
 static inline void
@@ -105,7 +96,6 @@ _go_to_render(ppu_t *ppu)
 {
     /* get ready for RENDER */
     ppu->mode = PPU_RENDER;
-    ppu->cycles_to_waste = 1;
     ppu->fetcher_mode = PPU_FETCHER_FETCH;
     ppu->sprite_fetch = false;
     ppu->cur_fetched_obj = 0;
@@ -116,6 +106,9 @@ _go_to_render(ppu_t *ppu)
     ppu->fetcher_x = -1;
     ppu->sprite_hit = false;
     ppu->render_cycles = 0;
+
+    /* waste an extra cycle after OAMSCAN */
+    ppu->cycles_to_waste = 1;
 
     /* init obj queue with transparent object pixels */
     for (size_t i = 0; i < 8; ++i)
@@ -133,11 +126,8 @@ _go_to_hblank(ppu_t *ppu)
     ppu->mode = PPU_HBLANK;
     ppu->cycles_to_waste = 375 - ppu->render_cycles;
 
-    /* fire the STAT interrupt if enabled */
-    if (ppu->hblank_int)
-        ppu->stat_mode = true;
-    else
-        ppu->stat_mode = false;
+    /* the first cycle must trigger the STAT interrupt */
+    ppu->hblank_int = false;
 }
 
 static inline void
@@ -147,26 +137,37 @@ _go_to_vblank(ppu_t *ppu)
     ppu->mode = PPU_VBLANK;
     ppu->cycles_to_waste = 455;
 
-    /* fire the normal VBLANK interrupt */
-    soc_interrupt(ppu->soc, INT_VBLANK);
-
-    /* fire the STAT interrupt if it's been enabled */
-    if (ppu->vblank_int)
-        ppu->stat_mode = true;
-    else
-        ppu->stat_mode = false;
+    /* the first cycle must trigger the STAT interrupt and the normal interrupt
+     */
+    ppu->vblank_int = false;
 }
 
 static void
 _ppu_vblank(ppu_t *ppu)
 {
+    /* fire the VBLANK interrupts if enabled */
+    if (!ppu->vblank_int) {
+        /* STAT interrupt */
+        if (ppu->vblank_int_enabled)
+            ppu->stat_mode = true;
+        else
+            ppu->stat_mode = false;
+
+        /* fire the normal VBLANK interrupt */
+        soc_interrupt(ppu->soc, INT_VBLANK);
+
+        ppu->vblank_int = true;
+    }
+
+    /* set shown mode */
+    ppu->shown_mode = PPU_VBLANK;
+
     /* if there are more cycles to waste, do it and return */
-    WASTE_CYCLES();
+    WASTE_CYCLES(ppu);
 
     /* if LY goes to 154 go to OAMSCAN, otherwise wait another round */
     if (++ppu->ly > 153) {
         ppu->ly = 0;
-        _check_lyc_stat_interrupt(ppu);
         _go_to_oamscan(ppu);
     } else {
         ppu->cycles_to_waste = 455;
@@ -176,12 +177,24 @@ _ppu_vblank(ppu_t *ppu)
 static void
 _ppu_hblank(ppu_t *ppu)
 {
+    /* fire the STAT interrupt if enabled */
+    if (!ppu->hblank_int) {
+        if (ppu->hblank_int_enabled)
+            ppu->stat_mode = true;
+        else
+            ppu->stat_mode = false;
+
+        ppu->hblank_int = true;
+    }
+
+    /* set shown mode */
+    ppu->shown_mode = PPU_HBLANK;
+
     /* if there are more cycles to waste, do it and return */
-    WASTE_CYCLES();
+    WASTE_CYCLES(ppu);
 
     /* get ready for either another round of OAMSCAN or VBLANK */
     if (++ppu->ly > 143) {
-        _check_lyc_stat_interrupt(ppu);
         _go_to_vblank(ppu);
     } else {
         _go_to_oamscan(ppu);
@@ -191,8 +204,26 @@ _ppu_hblank(ppu_t *ppu)
 static void
 _ppu_oamscan(ppu_t *ppu)
 {
+    /* fire STAT interrupt if enabled */
+    if (!ppu->oam_int) {
+        if (ppu->oam_int_enabled)
+            ppu->stat_mode = true;
+        else
+            ppu->stat_mode = false;
+        ppu->oam_int = true;
+    }
+
+    /* set shown mode */
+    ppu->shown_mode = PPU_OAMSCAN;
+
     /* if there are more cycles to waste, do it and return */
-    WASTE_CYCLES();
+    WASTE_CYCLES(ppu);
+
+    /* if cur_oam_idx is 40, exit OAMSCAN and enter RENDER */
+    if (ppu->cur_oam_idx > 39) {
+        _go_to_render(ppu);
+        return;
+    }
 
     /* TODO: two bus reads in one cycle. this should be split in two different
      * cycles */
@@ -224,13 +255,9 @@ _ppu_oamscan(ppu_t *ppu)
         ++ppu->cur_objs;
     }
 
-    /* if cur_oam_idx gets to 40 exit OAMSCAN and enter RENDER, else reiterate
-     * process but waste 1 dot */
-    if (++ppu->cur_oam_idx > 39) {
-        _go_to_render(ppu);
-    } else {
-        ppu->cycles_to_waste = 1;
-    }
+    /* increase cur_oam_idx and waste 1 cycle */
+    ++ppu->cur_oam_idx;
+    ppu->cycles_to_waste = 1;
 }
 
 static bool
@@ -269,7 +296,7 @@ _try_restart_bg_fetch(ppu_t *ppu)
 static inline void
 _fetch_bg_tile_id(ppu_t *ppu)
 {
-    /* discard the first 8 tiles */
+    /* discard the first 8 pixels */
     unsigned fetcher_x = ppu->fetcher_x < 0 ? 0 : ppu->fetcher_x;
 
     /* calculate tile map address */
@@ -287,7 +314,7 @@ static void
 _ppu_fetcher_fetch(ppu_t *ppu)
 {
     /* waste cycles if needed */
-    WASTE_CYCLES();
+    WASTE_CYCLES(ppu);
 
     /* fetch tile ID */
     if (ppu->sprite_fetch) {
@@ -347,7 +374,7 @@ static void
 _ppu_fetcher_tile_low(ppu_t *ppu)
 {
     /* waste cycles if needed */
-    WASTE_CYCLES();
+    WASTE_CYCLES(ppu);
 
     /* formulate the tile address */
     uint16_t addr = _get_bg_tile_address(ppu);
@@ -366,7 +393,7 @@ static void
 _merge_into_obj_queue(ppu_t *ppu)
 {
     uint8_t cur_obj_pixels[8];
-    extract_color_ids_from_bitplane(cur_obj_pixels, ppu->cur_tile_low,
+    _extract_color_ids_from_bitplane(cur_obj_pixels, ppu->cur_tile_low,
             ppu->cur_tile_high);
 
     /* merge only if the currently queued pixel is transparent (color ID: 0) */
@@ -382,7 +409,7 @@ static void
 _ppu_fetcher_tile_high_and_push(ppu_t *ppu)
 {
     /* waste cycles if needed */
-    WASTE_CYCLES();
+    WASTE_CYCLES(ppu);
 
     /* formulate the tile address */
     uint16_t addr = _get_bg_tile_address(ppu);
@@ -405,7 +432,7 @@ _ppu_fetcher_tile_high_and_push(ppu_t *ppu)
         ppu->fetcher_mode = PPU_FETCHER_SLEEP;
     } else {
         /* put the pixels in the tmp register */
-        extract_color_ids_from_bitplane(ppu->tmp_reg, ppu->cur_tile_low,
+        _extract_color_ids_from_bitplane(ppu->tmp_reg, ppu->cur_tile_low,
                 ppu->cur_tile_high);
         ppu->tmp_reg_full = true;
 
@@ -455,10 +482,12 @@ _ppu_pusher(ppu_t *ppu)
     px.val = 0xFFFFFFFF;
 
     /* try to get BG pixel (queue is always clocked forward) */
+    size_t old_bg_queue_idx = ppu->bg_queue_idx;
     uint8_t bg_color = ppu->bg_queue[ppu->bg_queue_idx++];
-    if (LCDC_BGWIN_ENABLE(ppu->lcdc)) {
+
+    /* use this pixel and mix it with the object below */
+    if (LCDC_BGWIN_ENABLE(ppu->lcdc))
         px = _get_pixel_with_palette_and_color_id(ppu->bgp, bg_color);
-    }
 
     /* extract pixel from obj queue if sprites are enabled. TODO: is obj queue
      * shifted even if disabled? */
@@ -472,8 +501,13 @@ _ppu_pusher(ppu_t *ppu)
         }
     }
 
+    /* if we just started (offscreen lx == 0), first discard first (SCX % 8)
+     * pixels */
+    if (ppu->lx == 0 && (ppu->scx % 8) != old_bg_queue_idx)
+        return;
+
     /* actually push pixel if lx >= 8 */
-    if (ppu->lx >= 8)
+    if (ppu->lx >= 8) 
         ppu->screen[ppu->ly][ppu->lx - 8] = px;
 
     /* increase LX */
@@ -486,6 +520,12 @@ _ppu_pusher(ppu_t *ppu)
 static void
 _ppu_render(ppu_t *ppu)
 {
+    /* set shown mode after wasting cycles */
+    ppu->shown_mode = PPU_RENDER;
+
+    /* this always disables the current STAT mode line */
+    ppu->stat_mode = false;
+
     /* Pusher/LCD is clocked when:
      *      - BG queue is not empty
      *      - Sprite is not hit
@@ -498,8 +538,9 @@ _ppu_render(ppu_t *ppu)
     /* call the fetcher */
     _ppu_fetcher(ppu);
 
-    /* check for sprites in the current X value */
-    for (size_t i = ppu->next_obj_to_check; i < ppu->cur_objs; ++i) {
+    /* check for sprites in the current X value if none is hit currently */
+    for (size_t i = ppu->next_obj_to_check;
+            i < ppu->cur_objs && !ppu->sprite_hit; ++i) {
         if (ppu->objs[i].x_pos == ppu->lx) {
             ppu->cur_fetched_obj = i;
             ppu->next_obj_to_check = i + 1;
@@ -550,10 +591,13 @@ ppu_cycle(ppu_t *ppu)
             assert(false);
     }
 
-    /* check if STAT went high (we only interrupt on the rising edge) */
+    /* check LY value at the end of calculations */
+    _check_lyc_stat_interrupt(ppu);
+
+    /* sample the new STAT line to calculate the interrupt */
     bool stat = ppu->stat_mode || ppu->stat_lyc;
 
-    /* fire a STAT interrupt if needed */
+    /* fire a STAT interrupt if needed and reset STAT line */
     if (!old_stat && stat)
         soc_interrupt(ppu->soc, INT_STAT);
 }
@@ -589,11 +633,16 @@ ppu_init(ppu_t *ppu, soc_t *soc)
     ppu->wx = ppu->wy = 0;
 
     /* set initial interrupt sources */
-    ppu->lyc_int = ppu->oam_int = ppu->vblank_int = ppu->hblank_int = false;
+    ppu->lyc_int_enabled = ppu->oam_int_enabled = false;
+    ppu->vblank_int_enabled = ppu->hblank_int_enabled = false;
+    ppu->vblank_int = ppu->hblank_int = ppu->oam_int = false;
 
     /* fill the screen with white pixels */
     memset(ppu->screen, 0xFF, SCREEN_HEIGHT * SCREEN_WIDTH);
 
     /* initially, the two STAT sources are off */
     ppu->stat_mode = ppu->stat_lyc = false;
+
+    /* the current shown mode is VBLANK */
+    ppu->shown_mode = PPU_VBLANK;
 }

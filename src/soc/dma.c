@@ -31,10 +31,7 @@ dma_cycle(dma_t *dma)
         return;
 
     /* waste the cycles first */
-    if (dma->cycles_to_waste) {
-        --dma->cycles_to_waste;
-        return;
-    }
+    WASTE_CYCLES(dma);
 
     /* calculate addresses */
     uint16_t mem_addr = (dma->high_addr << 8) + (160 - dma->pending);
