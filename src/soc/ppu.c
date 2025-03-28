@@ -95,6 +95,7 @@ _go_to_render(ppu_t *ppu)
     ppu->mode = PPU_RENDER;
     ppu->fetcher_mode = PPU_FETCHER_FETCH;
     ppu->sprite_fetch = false;
+    ppu->cycles_to_waste = 1;
     ppu->cur_fetched_obj = 0;
     ppu->next_obj_to_check = 0;
     ppu->bg_queue_idx = 8;
@@ -135,11 +136,12 @@ _ppu_vblank(ppu_t *ppu)
     /* if there are more cycles to waste, do it and return */
     WASTE_CYCLES(ppu);
 
-    /* if LY goes to 154 go to OAMSCAN, otherwise wait another round */
-    if (++ppu->ly > 153) {
-        ppu->ly = 0;
+    /* if LY goes to 153 go to OAMSCAN, otherwise wait another round */
+    if (ppu->ly + 1 > 152) {
+        ppu->next_ly = 0;
         ppu->next_mode = PPU_OAMSCAN;
     } else {
+        ppu->next_ly = ppu->ly + 1;
         ppu->cycles_to_waste = 455;
     }
 }
@@ -151,11 +153,14 @@ _ppu_hblank(ppu_t *ppu)
     WASTE_CYCLES(ppu);
 
     /* get ready for either another round of OAMSCAN or VBLANK */
-    if (++ppu->ly > 143) {
+    if (ppu->ly + 1 > 143) {
         ppu->next_mode = PPU_VBLANK;
     } else {
         ppu->next_mode = PPU_OAMSCAN;
     }
+
+    /* increase LY */
+    ppu->next_ly = ppu->ly + 1;
 }
 
 static void
@@ -209,8 +214,11 @@ _ppu_oamscan(ppu_t *ppu)
 static bool
 _try_fill_bg_queue(ppu_t *ppu)
 {
-    /* if tmp register is not full OR queue is not empty, return */
-    if (!_is_bg_queue_empty(ppu) || !ppu->tmp_reg_full)
+    /* if we came here, tmp_reg is expected to be filled */
+    assert(ppu->tmp_reg_full);
+
+    /* if queue is not empty, return */
+    if (!_is_bg_queue_empty(ppu))
         return false;
 
     /* set BG queue */
@@ -228,13 +236,13 @@ static inline void
 _try_restart_bg_fetch(ppu_t *ppu)
 {
     /* if we can fill BG queue, increase fetcher X and go to fetch mode */
-    ppu->fetcher_mode = PPU_FETCHER_SLEEP;
     if (_try_fill_bg_queue(ppu)) {
         LOG(LOG_VERBOSE, "bg queue refilled, going back to fetch mode");
         ++ppu->fetcher_x;
         ppu->fetcher_mode = PPU_FETCHER_FETCH;
         ppu->cycles_to_waste = 1;
     } else {
+        ppu->fetcher_mode = PPU_FETCHER_SLEEP;
         LOG(LOG_VERBOSE, "bg queue is full, sleeping before pushing");
     }
 }
@@ -352,7 +360,7 @@ _merge_into_obj_queue(ppu_t *ppu)
 }
 
 static void
-_ppu_fetcher_tile_high_and_push(ppu_t *ppu)
+_ppu_fetcher_tile_high(ppu_t *ppu)
 {
     /* waste cycles if needed */
     WASTE_CYCLES(ppu);
@@ -368,6 +376,13 @@ _ppu_fetcher_tile_high_and_push(ppu_t *ppu)
     LOG(LOG_VERBOSE, "getting high tile from addr 0x%04X (tile data: 0x%02X)",
             addr, ppu->cur_tile_high);
 
+    /* go to PUSH mode */
+    ppu->fetcher_mode = PPU_FETCHER_PUSH;
+}
+
+static void
+_ppu_fetcher_push(ppu_t *ppu)
+{
     /* try to push */
     if (ppu->sprite_fetch) {
         /* MERGE SPRITE INTO OBJ QUEUE */
@@ -395,6 +410,15 @@ _ppu_fetcher_sleep(ppu_t *ppu)
     /* if we end up here in a sprite fetch state, there was a bug */
     assert(!ppu->sprite_fetch);
 
+    /* if we have a sprite hit, this takes precedence over the BG/WIN queue
+     * fetching */
+    if (ppu->sprite_hit) {
+        ppu->fetcher_mode = PPU_FETCHER_FETCH;
+        ppu->sprite_fetch = true;
+        ppu->cycles_to_waste = 1;
+        return;
+    }
+
     /* try filling bg queue, otherwise keep sleep mode */
     _try_restart_bg_fetch(ppu);
 }
@@ -410,7 +434,10 @@ _ppu_fetcher(ppu_t *ppu)
             _ppu_fetcher_tile_low(ppu);
             break;
         case PPU_FETCHER_TILE_HIGH:
-            _ppu_fetcher_tile_high_and_push(ppu);
+            _ppu_fetcher_tile_high(ppu);
+            break;
+        case PPU_FETCHER_PUSH:
+            _ppu_fetcher_push(ppu);
             break;
         case PPU_FETCHER_SLEEP:
             _ppu_fetcher_sleep(ppu);
@@ -489,12 +516,6 @@ _ppu_render(ppu_t *ppu)
         }
     }
 
-    /* if we hit a sprite and the pixel fetcher is free, we occupy it */
-    if (ppu->sprite_hit && ppu->fetcher_mode == PPU_FETCHER_SLEEP) {
-        ppu->fetcher_mode = PPU_FETCHER_FETCH;
-        ppu->sprite_fetch = true;
-    }
-
     /* increase render cycles */
     ++ppu->render_cycles;
 
@@ -518,7 +539,9 @@ _prepare_mode_switch(ppu_t *ppu)
             _go_to_hblank(ppu);
             break;
         case PPU_VBLANK:
-            stat_int = ppu->vblank_int_enabled;
+            /* apparently OAM interrupt selector also affects VBLANK STAT
+             * interrupt (???) */
+            stat_int = ppu->vblank_int_enabled || ppu->oam_int_enabled;
             soc_interrupt(ppu->soc, INT_VBLANK);
             _go_to_vblank(ppu);
             break;
@@ -550,6 +573,9 @@ ppu_cycle(ppu_t *ppu)
     /* if we need to advance mode, prepare the PPU */
     _prepare_mode_switch(ppu);
 
+    /* also if LY changed, set it at the beginning of the cycle */
+    ppu->ly = ppu->next_ly;
+
     /* see the status */
     switch (ppu->mode) {
         case PPU_HBLANK:
@@ -568,13 +594,13 @@ ppu_cycle(ppu_t *ppu)
             assert(false);
     }
 
-    /* check LY value at the end of calculations */
+    /* check LY value after calculations */
     _check_lyc_stat_interrupt(ppu);
 
     /* sample the new STAT line to calculate the interrupt */
     bool stat = ppu->stat_mode || ppu->stat_lyc;
 
-    /* fire a STAT interrupt if needed and reset STAT line */
+    /* fire a STAT interrupt if needed */
     if (!old_stat && stat)
         soc_interrupt(ppu->soc, INT_STAT);
 }
@@ -619,6 +645,7 @@ ppu_init(ppu_t *ppu, soc_t *soc)
     /* initially, the two STAT sources are off */
     ppu->stat_mode = ppu->stat_lyc = false;
 
-    /* next mode is currently the same */
-    ppu->next_mode = PPU_VBLANK;
+    /* we don't expect anything to change now */
+    ppu->next_mode = ppu->mode;
+    ppu->next_ly = ppu->ly;
 }

@@ -12,7 +12,7 @@ _dec_pc(cpu_t *cpu)
 static void
 _dec_sp(cpu_t *cpu)
 {
-    /* decrement PC */
+    /* decrement SP */
     _idu_write(cpu, cpu->sp.val--);
 }
 
