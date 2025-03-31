@@ -137,11 +137,10 @@ _ppu_vblank(ppu_t *ppu)
     WASTE_CYCLES(ppu);
 
     /* if LY goes to 153 go to OAMSCAN, otherwise wait another round */
-    if (ppu->ly + 1 > 152) {
-        ppu->next_ly = 0;
+    if (++ppu->ly > 152) {
+        ppu->ly = 0;
         ppu->next_mode = PPU_OAMSCAN;
     } else {
-        ppu->next_ly = ppu->ly + 1;
         ppu->cycles_to_waste = 455;
     }
 }
@@ -160,7 +159,7 @@ _ppu_hblank(ppu_t *ppu)
     }
 
     /* increase LY */
-    ppu->next_ly = ppu->ly + 1;
+    ++ppu->ly;
 }
 
 static void
@@ -376,13 +375,6 @@ _ppu_fetcher_tile_high(ppu_t *ppu)
     LOG(LOG_VERBOSE, "getting high tile from addr 0x%04X (tile data: 0x%02X)",
             addr, ppu->cur_tile_high);
 
-    /* go to PUSH mode */
-    ppu->fetcher_mode = PPU_FETCHER_PUSH;
-}
-
-static void
-_ppu_fetcher_push(ppu_t *ppu)
-{
     /* try to push */
     if (ppu->sprite_fetch) {
         /* MERGE SPRITE INTO OBJ QUEUE */
@@ -435,9 +427,6 @@ _ppu_fetcher(ppu_t *ppu)
             break;
         case PPU_FETCHER_TILE_HIGH:
             _ppu_fetcher_tile_high(ppu);
-            break;
-        case PPU_FETCHER_PUSH:
-            _ppu_fetcher_push(ppu);
             break;
         case PPU_FETCHER_SLEEP:
             _ppu_fetcher_sleep(ppu);
@@ -573,9 +562,6 @@ ppu_cycle(ppu_t *ppu)
     /* if we need to advance mode, prepare the PPU */
     _prepare_mode_switch(ppu);
 
-    /* also if LY changed, set it at the beginning of the cycle */
-    ppu->ly = ppu->next_ly;
-
     /* see the status */
     switch (ppu->mode) {
         case PPU_HBLANK:
@@ -647,5 +633,4 @@ ppu_init(ppu_t *ppu, soc_t *soc)
 
     /* we don't expect anything to change now */
     ppu->next_mode = ppu->mode;
-    ppu->next_ly = ppu->ly;
 }

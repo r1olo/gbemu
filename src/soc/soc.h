@@ -169,7 +169,6 @@ enum ppu_fetcher_mode {
     PPU_FETCHER_FETCH,
     PPU_FETCHER_TILE_LOW,
     PPU_FETCHER_TILE_HIGH,
-    PPU_FETCHER_PUSH,
     PPU_FETCHER_SLEEP,
 };
 
@@ -297,11 +296,6 @@ typedef struct ppu {
      * that mode. at the end of the last VBLANK cycle, for example, the CPU
      * still reads VBLANK */
     enum ppu_mode next_mode;
-
-    /* the next LY value. LY is not updated at the end of the cycle, but rather
-     * at the beginning. it represents the current scanline the PPU is rendering
-     * */
-    uint8_t next_ly;
 } ppu_t;
 
 /* the possible CPU states */
