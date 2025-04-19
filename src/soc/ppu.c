@@ -136,8 +136,9 @@ _ppu_vblank(ppu_t *ppu)
     /* if there are more cycles to waste, do it and return */
     WASTE_CYCLES(ppu);
 
-    /* if LY goes to 153 go to OAMSCAN, otherwise wait another round */
-    if (++ppu->ly > 152) {
+    /* if LY goes to 154 go to OAMSCAN, otherwise wait another round */
+    if (++ppu->ly > 153) {
+        /* TODO: ly should be reset early when it is 154 (after 56 cycles) */
         ppu->ly = 0;
         ppu->next_mode = PPU_OAMSCAN;
     } else {
@@ -520,22 +521,16 @@ _prepare_mode_switch(ppu_t *ppu)
     if (ppu->mode == ppu->next_mode)
         return;
 
-    /* prepare next mode and fire interrupts */
-    bool stat_int = false;
+    /* prepare next mode */
     switch (ppu->next_mode) {
         case PPU_HBLANK:
-            stat_int = ppu->hblank_int_enabled;
             _go_to_hblank(ppu);
             break;
         case PPU_VBLANK:
-            /* apparently OAM interrupt selector also affects VBLANK STAT
-             * interrupt (???) */
-            stat_int = ppu->vblank_int_enabled || ppu->oam_int_enabled;
             soc_interrupt(ppu->soc, INT_VBLANK);
             _go_to_vblank(ppu);
             break;
         case PPU_OAMSCAN:
-            stat_int = ppu->oam_int_enabled;
             _go_to_oamscan(ppu);
             break;
         case PPU_RENDER:
@@ -543,6 +538,30 @@ _prepare_mode_switch(ppu_t *ppu)
             break;
         default:
             assert(false);
+    }
+}
+
+static inline void
+_calculate_stat_mode(ppu_t *ppu)
+{
+    /* calculate STAT mode and set it. this function is called after changing
+     * the current mode */
+    bool stat_int = false; 
+    switch (ppu->mode) {
+        case PPU_HBLANK:
+            stat_int = ppu->hblank_int_enabled;
+            break;
+        case PPU_VBLANK:
+            /* apparently OAM interrupt selector also affects VBLANK STAT
+             * interrupt (???) */
+            stat_int = ppu->vblank_int_enabled || ppu->oam_int_enabled;
+            break;
+        case PPU_OAMSCAN:
+            stat_int = ppu->oam_int_enabled;
+            break;
+        case PPU_RENDER:
+        default:
+            break;
     }
 
     /* turn on or off the STAT line for mode */
@@ -561,6 +580,16 @@ ppu_cycle(ppu_t *ppu)
 
     /* if we need to advance mode, prepare the PPU */
     _prepare_mode_switch(ppu);
+
+    /* calculate STAT mode line based on current PPU mode, and whether the STAT
+     * register has just been written to (in which case, all goes up for some
+     * reason) */
+    if (ppu->stat_written) {
+        ppu->stat_mode = true;
+        ppu->stat_written = false;
+    } else {
+        _calculate_stat_mode(ppu);
+    }
 
     /* see the status */
     switch (ppu->mode) {
@@ -633,4 +662,7 @@ ppu_init(ppu_t *ppu, soc_t *soc)
 
     /* we don't expect anything to change now */
     ppu->next_mode = ppu->mode;
+
+    /* this is false initially */
+    ppu->stat_written = false;
 }

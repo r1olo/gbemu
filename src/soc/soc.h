@@ -296,6 +296,11 @@ typedef struct ppu {
      * that mode. at the end of the last VBLANK cycle, for example, the CPU
      * still reads VBLANK */
     enum ppu_mode next_mode;
+
+    /* whether the STAT register has been written to. this means that the STAT
+     * line automagically goes ON for one cycle, then resets back to what it
+     * should actually be */
+    bool stat_written;
 } ppu_t;
 
 /* the possible CPU states */
@@ -518,11 +523,13 @@ ppu_get_stat(ppu_t *ppu)
 static inline void
 ppu_set_stat(ppu_t *ppu, uint8_t val)
 {
-    /* TODO: implement spurious STAT interrupts */
     ppu->hblank_int_enabled = val & 0x08;
     ppu->vblank_int_enabled = val & 0x10;
     ppu->oam_int_enabled = val & 0x20;
     ppu->lyc_int_enabled = val & 0x40;
+
+    /* spurious interrupts */
+    ppu->stat_written = true;
 }
 
 static inline void
