@@ -12,12 +12,11 @@ _panic(cpu_t *cpu)
 static void
 _halt(cpu_t *cpu)
 {
-    /* if we're eligible for halt bug (IME = 0 && (IE & IF) != 0), set it.
-     * otherwise perform a normal halt */
-    if (cpu->ime == false && _pending_interrupts(cpu))
-        cpu->halt_bug = true;
-    else
-        cpu->halt = true;
+    /* halt the CPU */
+    cpu->halt = true;
+
+    /* this sets up the HALT bug, which only happens in the first cycle */
+    cpu->halt_bug = true;
 }
 
 static void

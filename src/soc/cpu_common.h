@@ -233,17 +233,4 @@ _pending_interrupts(cpu_t *cpu)
     return (cpu->ie & cpu->iflag) & 0x1F;
 }
 
-/* return whether we are interrupted (pending + IME) */
-static inline bool
-_is_interrupted(cpu_t *cpu)
-{
-    /* IME disabled -> no interrupts */
-    if (!cpu->ime)
-        return false;
-
-    /* depends on whether we have pending interrupts */
-    return _pending_interrupts(cpu);
-}
-
-
 #endif /* __CPU_COMMON_H */

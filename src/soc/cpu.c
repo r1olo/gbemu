@@ -79,14 +79,6 @@ _cpu_read_imm8(cpu_t *cpu, uint8_t *dst)
 void
 cpu_cycle(cpu_t *cpu)
 {
-    /* any pending interrupt wakes up the CPU */
-    if (_pending_interrupts(cpu))
-        cpu->halt = false;
-
-    /* if no pending interrupt saved us, there's nothing much we can do */
-    if (cpu->halt)
-        return;
-
     /* if we have pending cycles exhaust them */
     WASTE_CYCLES(cpu);
 
@@ -121,17 +113,40 @@ cpu_cycle(cpu_t *cpu)
         /* this is mostly for debug */
         cpu->curpc = cpu->pc;
 
-        /* if the halt bug is active, we read from the PC but don't increase it
-         * automatically */
-        if (cpu->halt_bug) {
-            _cpu_read_byte(cpu, &cpu->ir, cpu->pc.val);
+        /* get the current interrupts */
+        uint8_t ints = _pending_interrupts(cpu);
+
+        /* the actual instruction we fetch depends on whether we're halted. note
+         * that we're just filling the instruction register - we might jump to
+         * ISR directly later on if IME is enabled */
+        if (cpu->halt) {
+            if (ints) {
+                /* any pending interrupt, whether handled or not (see IME check
+                 * later), causes HALT to stop */
+                cpu->halt = false;
+
+                /* if it's the first cycle, the CPU does not increment the PC
+                 * (HALT bug). otherwise, it normally does */
+                if (cpu->halt_bug)
+                    _cpu_read_byte(cpu, &cpu->ir, cpu->pc.val);
+                else
+                    _cpu_read_imm8(cpu, &cpu->ir);
+            } else {
+                /* setting up a NOP instruction */
+                cpu->ir = 0x00;
+            }
+
+            /* always disable the halt bug after the first cycle */
             cpu->halt_bug = false;
         } else {
+            /* if not halted, normal fetch is executed */
             _cpu_read_imm8(cpu, &cpu->ir);
         }
 
-        /* the next step depends on whether we're interrupted */
-        if (_is_interrupted(cpu)) {
+        /* the next step depends on whether we're interrupted. if we are, we
+         * jump directly to ISR. otherwise, we execute the currently fetched
+         * instruction */
+        if (cpu->ime && ints) {
             cpu->ime = false;
             cpu->curlist = isr;
         } else {
