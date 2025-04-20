@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
     soc_t *soc = soc_create((bus_t *)bus, (bus_t *)vid_bus);
 
     while (true) {
-        while (soc->cpu->curpc.val != 0x01E1) {
+        while (soc->cpu->curpc.val != 0x16d) {
             soc_step(soc);
             print_cpu_state(soc->cpu);
             print_tim_state(soc->tim);
@@ -109,15 +109,15 @@ int main(int argc, char *argv[])
         printf("bp reached\n");
         getchar();
 
-        //while (soc->cpu->curpc.val != 0x0268) {
-        //    soc_step(soc);
-        //    print_cpu_state(soc->cpu);
-        //    print_tim_state(soc->tim);
-        //    print_ppu_state(soc->ppu);
-        //}
+        while (soc->cpu->curpc.val != 0x017c) {
+            soc_step(soc);
+            print_cpu_state(soc->cpu);
+            print_tim_state(soc->tim);
+            print_ppu_state(soc->ppu);
+        }
 
-        //printf("bp reached\n");
-        //getchar();
+        printf("bp reached\n");
+        getchar();
         break;
     }
 

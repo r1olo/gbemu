@@ -153,11 +153,10 @@ _ppu_hblank(ppu_t *ppu)
     WASTE_CYCLES(ppu);
 
     /* get ready for either another round of OAMSCAN or VBLANK */
-    if (ppu->ly + 1 > 143) {
+    if (ppu->ly + 1 > 143)
         ppu->next_mode = PPU_VBLANK;
-    } else {
+    else
         ppu->next_mode = PPU_OAMSCAN;
-    }
 
     /* increase LY */
     ++ppu->ly;
@@ -169,11 +168,12 @@ _ppu_oamscan(ppu_t *ppu)
     /* if there are more cycles to waste, do it and return */
     WASTE_CYCLES(ppu);
 
-    /* if cur_oam_idx is 40, exit OAMSCAN and enter RENDER */
-    if (ppu->cur_oam_idx > 39) {
-        ppu->next_mode = PPU_RENDER;
-        return;
-    }
+    ///* if cur_oam_idx is 40, exit OAMSCAN and enter RENDER */
+    //if (ppu->cur_oam_idx > 39) {
+    //    ppu->next_mode = PPU_RENDER;
+    //    LOG(LOG_ERR, "oamscan -> render, cycles: %d", oam_cycles);
+    //    return;
+    //}
 
     /* TODO: two bus reads in one cycle. this should be split in two different
      * cycles. this also fixes having to switch mode above with an early return
@@ -206,9 +206,12 @@ _ppu_oamscan(ppu_t *ppu)
         ++ppu->cur_objs;
     }
 
-    /* increase cur_oam_idx and waste 1 cycle */
-    ++ppu->cur_oam_idx;
-    ppu->cycles_to_waste = 1;
+    /* increase cur_oam_idx and waste 1 cycle. if cur_oam_idx is becomes 40, we
+     * just exit */
+    if (++ppu->cur_oam_idx > 39)
+        ppu->next_mode = PPU_RENDER;
+    else
+        ppu->cycles_to_waste = 1;
 }
 
 static bool

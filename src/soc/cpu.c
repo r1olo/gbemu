@@ -134,10 +134,10 @@ cpu_cycle(cpu_t *cpu)
             } else {
                 /* setting up a NOP instruction */
                 cpu->ir = 0x00;
-            }
 
-            /* always disable the halt bug after the first cycle */
-            cpu->halt_bug = false;
+                /* always disable the halt bug after the first cycle */
+                cpu->halt_bug = false;
+            }
         } else {
             /* if not halted, normal fetch is executed */
             _cpu_read_imm8(cpu, &cpu->ir);
