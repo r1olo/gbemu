@@ -168,17 +168,6 @@ _ppu_oamscan(ppu_t *ppu)
     /* if there are more cycles to waste, do it and return */
     WASTE_CYCLES(ppu);
 
-    ///* if cur_oam_idx is 40, exit OAMSCAN and enter RENDER */
-    //if (ppu->cur_oam_idx > 39) {
-    //    ppu->next_mode = PPU_RENDER;
-    //    LOG(LOG_ERR, "oamscan -> render, cycles: %d", oam_cycles);
-    //    return;
-    //}
-
-    /* TODO: two bus reads in one cycle. this should be split in two different
-     * cycles. this also fixes having to switch mode above with an early return
-     */
-
     /* current OAM address */
     uint8_t cur_addr = ppu->cur_oam_idx * 4;
     assert(cur_addr < 0xA0);
