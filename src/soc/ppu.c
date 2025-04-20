@@ -136,12 +136,21 @@ _ppu_vblank(ppu_t *ppu)
     /* if there are more cycles to waste, do it and return */
     WASTE_CYCLES(ppu);
 
-    /* if LY goes to 154 go to OAMSCAN, otherwise wait another round */
-    if (++ppu->ly > 153) {
-        /* TODO: ly should be reset early when it is 154 (after 56 cycles) */
-        ppu->ly = 0;
+    /* determine what to do with our life */
+    if (ppu->ly == 0) {
+        /* if LY is 0, that means vblank is over. go to oamscan */
         ppu->next_mode = PPU_OAMSCAN;
+    } else if (ppu->ly == 153) {
+        /* if LY is 153, we need to reset it and continue with vblank */
+        ppu->ly = 0;
+        ppu->cycles_to_waste = 399;
+    } else if (++ppu->ly > 152) {
+        /* if LY goes to 153, we must only waste 55 cycles, because after those
+         * LY is reset to 0 (but vblank continues) */
+        ppu->cycles_to_waste = 55;
     } else {
+        /* after incrementing LY, if no above condition is met, we just continue
+         * vblank peacefully */
         ppu->cycles_to_waste = 455;
     }
 }
@@ -153,13 +162,10 @@ _ppu_hblank(ppu_t *ppu)
     WASTE_CYCLES(ppu);
 
     /* get ready for either another round of OAMSCAN or VBLANK */
-    if (ppu->ly + 1 > 143)
+    if (++ppu->ly > 143)
         ppu->next_mode = PPU_VBLANK;
     else
         ppu->next_mode = PPU_OAMSCAN;
-
-    /* increase LY */
-    ++ppu->ly;
 }
 
 static void
@@ -234,8 +240,14 @@ _try_restart_bg_fetch(ppu_t *ppu)
         ppu->fetcher_mode = PPU_FETCHER_FETCH;
         ppu->cycles_to_waste = 1;
     } else {
-        ppu->fetcher_mode = PPU_FETCHER_SLEEP;
-        LOG(LOG_VERBOSE, "bg queue is full, sleeping before pushing");
+        LOG(LOG_VERBOSE, "bg queue is full, either go to sleep or be stolen");
+        if (ppu->sprite_hit) {
+            ppu->fetcher_mode = PPU_FETCHER_FETCH;
+            ppu->sprite_fetch = true;
+            ppu->cycles_to_waste = 1;
+        } else {
+            ppu->fetcher_mode = PPU_FETCHER_SLEEP;
+        }
     }
 }
 
@@ -395,15 +407,6 @@ _ppu_fetcher_sleep(ppu_t *ppu)
     /* if we end up here in a sprite fetch state, there was a bug */
     assert(!ppu->sprite_fetch);
 
-    /* if we have a sprite hit, this takes precedence over the BG/WIN queue
-     * fetching */
-    if (ppu->sprite_hit) {
-        ppu->fetcher_mode = PPU_FETCHER_FETCH;
-        ppu->sprite_fetch = true;
-        ppu->cycles_to_waste = 1;
-        return;
-    }
-
     /* try filling bg queue, otherwise keep sleep mode */
     _try_restart_bg_fetch(ppu);
 }
@@ -475,6 +478,10 @@ _ppu_pusher(ppu_t *ppu)
 static void
 _ppu_render(ppu_t *ppu)
 {
+    /* call the fetcher (must be before the pusher. the pusher can use a fresh
+     * queue push immediately) */
+    _ppu_fetcher(ppu);
+
     /* Pusher/LCD is clocked when:
      *      - BG queue is not empty
      *      - Sprite is not hit
@@ -483,9 +490,6 @@ _ppu_render(ppu_t *ppu)
      */
     if (!_is_bg_queue_empty(ppu) && !ppu->sprite_hit)
         _ppu_pusher(ppu);
-
-    /* call the fetcher */
-    _ppu_fetcher(ppu);
 
     /* check for sprites in the current X value if none is hit currently */
     for (size_t i = ppu->next_obj_to_check;
@@ -545,8 +549,10 @@ _calculate_stat_mode(ppu_t *ppu)
             break;
         case PPU_VBLANK:
             /* apparently OAM interrupt selector also affects VBLANK STAT
-             * interrupt (???) */
-            stat_int = ppu->vblank_int_enabled || ppu->oam_int_enabled;
+             * interrupt, but only at line 144 (wtf?) */
+            stat_int = ppu->vblank_int_enabled;
+            if (ppu->ly == 144)
+                stat_int |= ppu->oam_int_enabled;
             break;
         case PPU_OAMSCAN:
             stat_int = ppu->oam_int_enabled;
@@ -621,7 +627,7 @@ ppu_init(ppu_t *ppu, soc_t *soc)
     /* first value of LCDC */
     ppu->lcdc = 0x91;
 
-    /* PPU starts operating at VBLANK (1 line after) */
+    /* PPU starts operating at VBLANK */
     ppu->mode = PPU_VBLANK;
     ppu->cycles_to_waste = 455;
     ppu->ly = 145;
@@ -652,9 +658,9 @@ ppu_init(ppu_t *ppu, soc_t *soc)
     /* initially, the two STAT sources are off */
     ppu->stat_mode = ppu->stat_lyc = false;
 
-    /* we don't expect anything to change now */
-    ppu->next_mode = ppu->mode;
-
     /* this is false initially */
     ppu->stat_written = false;
+
+    /* we don't expect anything to change now */
+    ppu->next_mode = ppu->mode;
 }

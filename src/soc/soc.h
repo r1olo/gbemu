@@ -292,15 +292,15 @@ typedef struct ppu {
      * interrupts the CPU if it goes high from low (STAT blocking) */
     bool stat_mode, stat_lyc;
 
-    /* the next mode. the PPU's mode is actually changed at the first cycle of
-     * that mode. at the end of the last VBLANK cycle, for example, the CPU
-     * still reads VBLANK */
-    enum ppu_mode next_mode;
-
     /* whether the STAT register has been written to. this means that the STAT
      * line automagically goes ON for one cycle, then resets back to what it
      * should actually be */
     bool stat_written;
+
+    /* the next mode. the PPU's mode is actually changed at the first cycle of
+     * that mode. at the end of the last VBLANK cycle, for example, the CPU
+     * still reads VBLANK */
+    enum ppu_mode next_mode;
 } ppu_t;
 
 /* the possible CPU states */
