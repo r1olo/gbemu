@@ -128,6 +128,7 @@ _go_to_vblank(ppu_t *ppu)
     /* get ready for VBLANK */
     ppu->mode = PPU_VBLANK;
     ppu->cycles_to_waste = 455;
+    soc_interrupt(ppu->soc, INT_VBLANK);
 }
 
 static void
@@ -139,7 +140,7 @@ _ppu_vblank(ppu_t *ppu)
     /* determine what to do with our life */
     if (ppu->ly == 0) {
         /* if LY is 0, that means vblank is over. go to oamscan */
-        ppu->next_mode = PPU_OAMSCAN;
+        _go_to_oamscan(ppu);
     } else if (ppu->ly == 153) {
         /* if LY is 153, we need to reset it and continue with vblank */
         ppu->ly = 0;
@@ -163,9 +164,9 @@ _ppu_hblank(ppu_t *ppu)
 
     /* get ready for either another round of OAMSCAN or VBLANK */
     if (++ppu->ly > 143)
-        ppu->next_mode = PPU_VBLANK;
+        _go_to_vblank(ppu);
     else
-        ppu->next_mode = PPU_OAMSCAN;
+        _go_to_oamscan(ppu);
 }
 
 static void
@@ -204,7 +205,7 @@ _ppu_oamscan(ppu_t *ppu)
     /* increase cur_oam_idx and waste 1 cycle. if cur_oam_idx is becomes 40, we
      * just exit */
     if (++ppu->cur_oam_idx > 39)
-        ppu->next_mode = PPU_RENDER;
+        _go_to_render(ppu);
     else
         ppu->cycles_to_waste = 1;
 }
@@ -240,7 +241,10 @@ _try_restart_bg_fetch(ppu_t *ppu)
         ppu->fetcher_mode = PPU_FETCHER_FETCH;
         ppu->cycles_to_waste = 1;
     } else {
-        LOG(LOG_VERBOSE, "bg queue is full, either go to sleep or be stolen");
+        /* this is the perfect moment for a sprite to "steal" the fetcher. its
+         * tmp register is full, so everyone is happy */
+        LOG(LOG_VERBOSE, "bg queue is full, either go to sleep or fetch"
+                " sprite");
         if (ppu->sprite_hit) {
             ppu->fetcher_mode = PPU_FETCHER_FETCH;
             ppu->sprite_fetch = true;
@@ -380,6 +384,13 @@ _ppu_fetcher_tile_high(ppu_t *ppu)
     LOG(LOG_VERBOSE, "getting high tile from addr 0x%04X (tile data: 0x%02X)",
             addr, ppu->cur_tile_high);
 
+    /* go to push mode */
+    ppu->fetcher_mode = PPU_FETCHER_PUSH;
+}
+
+static void
+_ppu_fetcher_push(ppu_t *ppu)
+{
     /* try to push */
     if (ppu->sprite_fetch) {
         /* MERGE SPRITE INTO OBJ QUEUE */
@@ -423,6 +434,9 @@ _ppu_fetcher(ppu_t *ppu)
             break;
         case PPU_FETCHER_TILE_HIGH:
             _ppu_fetcher_tile_high(ppu);
+            break;
+        case PPU_FETCHER_PUSH:
+            _ppu_fetcher_push(ppu);
             break;
         case PPU_FETCHER_SLEEP:
             _ppu_fetcher_sleep(ppu);
@@ -478,8 +492,8 @@ _ppu_pusher(ppu_t *ppu)
 static void
 _ppu_render(ppu_t *ppu)
 {
-    /* call the fetcher (must be before the pusher. the pusher can use a fresh
-     * queue push immediately) */
+    /* call the fetcher before the pusher, as the latter may use a fresh BG
+     * queue push immediately */
     _ppu_fetcher(ppu);
 
     /* Pusher/LCD is clocked when:
@@ -507,34 +521,7 @@ _ppu_render(ppu_t *ppu)
 
     /* if LX goes to 168, we can start the HBLANK phase */
     if (ppu->lx > 167)
-        ppu->next_mode = PPU_HBLANK;
-}
-
-static inline void
-_prepare_mode_switch(ppu_t *ppu)
-{
-    /* if there's no switch requested, return */
-    if (ppu->mode == ppu->next_mode)
-        return;
-
-    /* prepare next mode */
-    switch (ppu->next_mode) {
-        case PPU_HBLANK:
-            _go_to_hblank(ppu);
-            break;
-        case PPU_VBLANK:
-            soc_interrupt(ppu->soc, INT_VBLANK);
-            _go_to_vblank(ppu);
-            break;
-        case PPU_OAMSCAN:
-            _go_to_oamscan(ppu);
-            break;
-        case PPU_RENDER:
-            _go_to_render(ppu);
-            break;
-        default:
-            assert(false);
-    }
+        _go_to_hblank(ppu);
 }
 
 static inline void
@@ -575,9 +562,6 @@ ppu_cycle(ppu_t *ppu)
 
     /* sample the current STAT line status (before stepping through the PPU) */
     bool old_stat = ppu->stat_mode || ppu->stat_lyc;
-
-    /* if we need to advance mode, prepare the PPU */
-    _prepare_mode_switch(ppu);
 
     /* calculate STAT mode line based on current PPU mode, and whether the STAT
      * register has just been written to (in which case, all goes up for some
@@ -660,7 +644,4 @@ ppu_init(ppu_t *ppu, soc_t *soc)
 
     /* this is false initially */
     ppu->stat_written = false;
-
-    /* we don't expect anything to change now */
-    ppu->next_mode = ppu->mode;
 }

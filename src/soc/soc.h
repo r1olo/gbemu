@@ -169,6 +169,7 @@ enum ppu_fetcher_mode {
     PPU_FETCHER_FETCH,
     PPU_FETCHER_TILE_LOW,
     PPU_FETCHER_TILE_HIGH,
+    PPU_FETCHER_PUSH,
     PPU_FETCHER_SLEEP,
 };
 
@@ -296,11 +297,6 @@ typedef struct ppu {
      * line automagically goes ON for one cycle, then resets back to what it
      * should actually be */
     bool stat_written;
-
-    /* the next mode. the PPU's mode is actually changed at the first cycle of
-     * that mode. at the end of the last VBLANK cycle, for example, the CPU
-     * still reads VBLANK */
-    enum ppu_mode next_mode;
 } ppu_t;
 
 /* the possible CPU states */
