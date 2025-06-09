@@ -189,13 +189,24 @@ enum ppu_fetcher_mode {
 #define OBJ_ATTR_PRIORITY(x)    (((x) & 0x80) >> 7)
 
 /* the Pixel Processing Unit. perhaps the most complicated component of them
- * all, the PPU is repsonsible for displaying pixels to the screen! */
+ * all, the PPU is repsonsible for displaying pixels to the screen!
+ *
+ * the PPU works with falling edges, while the CPU and the rest of the system
+ * uses raising edges. this means that the PPU and CPU are "off sync" by 1/2
+ * clock. this explains the 173.5 clocks rendering duration.
+ *
+ * the CPU readable stuff is ultimately latched with a delay of 1 dot. we need a
+ * visible_mode (different from the internal PPU mode) and the STAT interrupts
+ * are calculated based off this visible mode */
 typedef struct ppu {
     /* pointer to the controlling SoC */
     struct soc *soc;
 
     /* the current PPU mode */
     enum ppu_mode mode;
+
+    /* the current visible PPU mode (read above) */
+    enum ppu_mode visible_mode;
 
     /* the control register */
     uint8_t lcdc;
@@ -224,10 +235,6 @@ typedef struct ppu {
     /* sources of interrupts */
     bool lyc_int_enabled, oam_int_enabled,
          vblank_int_enabled, hblank_int_enabled;
-
-    /* this is needed for the ***undocumented*** 1-cycle delay between the LY
-     * increase and the stat mode 0 interrupt */
-    bool hblank_int_avail;
 
     /* sprite store with X coords (matchers) */
     obj_store_entry_t objs[10];
@@ -510,7 +517,7 @@ static inline uint8_t
 ppu_get_stat(ppu_t *ppu)
 {
     uint8_t ret = 0x80;
-    ret |= LCDC_PPU_ENABLE(ppu->lcdc) ? ppu->mode & 0x03 : 0;
+    ret |= LCDC_PPU_ENABLE(ppu->lcdc) ? ppu->visible_mode & 0x03 : 0;
     ret |= (ppu->lyc == ppu->ly) << 2;
     ret |= ppu->hblank_int_enabled << 3;
     ret |= ppu->vblank_int_enabled << 4;
@@ -537,7 +544,7 @@ ppu_write_lcdc(ppu_t *ppu, uint8_t val)
     /* if LCD is turned off, reset it for good */
     if (!LCDC_PPU_ENABLE(val)) {
         ppu->ly = 0;
-        ppu->mode = PPU_HBLANK;
+        ppu->mode = ppu->visible_mode = PPU_HBLANK;
         ppu->cycles_to_waste = 1;
         ppu->stat_mode = ppu->stat_lyc = false;
     }

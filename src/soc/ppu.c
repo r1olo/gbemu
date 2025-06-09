@@ -120,7 +120,6 @@ _go_to_hblank(ppu_t *ppu)
     /* get ready for HBLANK */
     ppu->mode = PPU_HBLANK;
     ppu->cycles_to_waste = 375 - ppu->render_cycles;
-    ppu->hblank_int_avail = false;
 }
 
 static inline void
@@ -526,13 +525,9 @@ _calculate_stat_mode(ppu_t *ppu)
     /* calculate STAT mode and set it. this function is called after changing
      * the current mode */
     bool stat_int = false; 
-    switch (ppu->mode) {
+    switch (ppu->visible_mode) {
         case PPU_HBLANK:
             /* HBLANK must wait 1 cycle first */
-            if (!ppu->hblank_int_avail) {
-                ppu->hblank_int_avail = true;
-                break;
-            }
             stat_int = ppu->hblank_int_enabled;
             break;
         case PPU_VBLANK:
@@ -560,6 +555,9 @@ ppu_cycle(ppu_t *ppu)
     /* if LCD is powered off, do nothing */
     if (!LCDC_PPU_ENABLE(ppu->lcdc))
         return;
+
+    /* set the visible mode to the actual PPU mode */
+    ppu->visible_mode = ppu->mode;
 
     /* sample the current STAT line status (before stepping through the PPU) */
     bool old_stat = ppu->stat_mode || ppu->stat_lyc;
@@ -613,7 +611,7 @@ ppu_init(ppu_t *ppu, soc_t *soc)
     ppu->lcdc = 0x91;
 
     /* PPU starts operating at VBLANK */
-    ppu->mode = PPU_VBLANK;
+    ppu->mode = ppu->visible_mode = PPU_VBLANK;
     ppu->cycles_to_waste = 455;
     ppu->ly = 145;
 
@@ -636,9 +634,6 @@ ppu_init(ppu_t *ppu, soc_t *soc)
     /* set initial interrupt sources */
     ppu->lyc_int_enabled = ppu->oam_int_enabled = false;
     ppu->vblank_int_enabled = ppu->hblank_int_enabled = false;
-
-    /* the hblank interrupt is delayed by one cycle */
-    ppu->hblank_int_avail = false;
 
     /* fill the screen with white pixels */
     memset(ppu->screen, 0xFF, SCREEN_HEIGHT * SCREEN_WIDTH);
