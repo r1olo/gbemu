@@ -348,7 +348,7 @@ _ppu_fetcher_tile_low(ppu_t *ppu)
 
     /* advance to next step */
     ppu->cycles_to_waste = 1;
-    ppu->fetcher_mode = PPU_FETCHER_TILE_HIGH;
+    ppu->fetcher_mode = PPU_FETCHER_TILE_HIGH_PUSH;
 }
 
 static void
@@ -368,7 +368,7 @@ _merge_into_obj_queue(ppu_t *ppu)
 }
 
 static void
-_ppu_fetcher_tile_high(ppu_t *ppu)
+_ppu_fetcher_tile_high_push(ppu_t *ppu)
 {
     /* waste cycles if needed */
     WASTE_CYCLES(ppu);
@@ -384,13 +384,6 @@ _ppu_fetcher_tile_high(ppu_t *ppu)
     LOG(LOG_VERBOSE, "getting high tile from addr 0x%04X (tile data: 0x%02X)",
             addr, ppu->cur_tile_high);
 
-    /* go to push mode */
-    ppu->fetcher_mode = PPU_FETCHER_PUSH;
-}
-
-static void
-_ppu_fetcher_push(ppu_t *ppu)
-{
     /* try to push */
     if (ppu->sprite_fetch) {
         /* MERGE SPRITE INTO OBJ QUEUE */
@@ -398,6 +391,8 @@ _ppu_fetcher_push(ppu_t *ppu)
 
         /* sprite fetch is over, we can keep going */
         ppu->sprite_fetch = ppu->sprite_hit = false;
+        /* TODO: check current bg queue status and possibly go back to fetch????
+         * */
         ppu->fetcher_mode = PPU_FETCHER_SLEEP;
     } else {
         /* put the pixels in the tmp register */
@@ -432,11 +427,8 @@ _ppu_fetcher(ppu_t *ppu)
         case PPU_FETCHER_TILE_LOW:
             _ppu_fetcher_tile_low(ppu);
             break;
-        case PPU_FETCHER_TILE_HIGH:
-            _ppu_fetcher_tile_high(ppu);
-            break;
-        case PPU_FETCHER_PUSH:
-            _ppu_fetcher_push(ppu);
+        case PPU_FETCHER_TILE_HIGH_PUSH:
+            _ppu_fetcher_tile_high_push(ppu);
             break;
         case PPU_FETCHER_SLEEP:
             _ppu_fetcher_sleep(ppu);
@@ -475,8 +467,9 @@ _ppu_pusher(ppu_t *ppu)
 
     /* if we just started (offscreen lx == 0), first discard first (SCX % 8)
      * pixels */
-    if (ppu->lx == 0 && (ppu->scx % 8) != old_bg_queue_idx)
+    if (ppu->lx == 0 && (ppu->scx % 8) != old_bg_queue_idx) {
         return;
+    }
 
     /* actually push pixel if lx >= 8 */
     if (ppu->lx >= 8) 
@@ -502,8 +495,9 @@ _ppu_render(ppu_t *ppu)
      *      - LX is greater or equal than 8 (actually the pusher is clocked if
      *        LX < 8, except the LCD is not - so called offscreen pixel push)
      */
-    if (!_is_bg_queue_empty(ppu) && !ppu->sprite_hit)
+    if (!_is_bg_queue_empty(ppu) && !ppu->sprite_hit) {
         _ppu_pusher(ppu);
+    }
 
     /* check for sprites in the current X value if none is hit currently */
     for (size_t i = ppu->next_obj_to_check;
@@ -563,16 +557,6 @@ ppu_cycle(ppu_t *ppu)
     /* sample the current STAT line status (before stepping through the PPU) */
     bool old_stat = ppu->stat_mode || ppu->stat_lyc;
 
-    /* calculate STAT mode line based on current PPU mode, and whether the STAT
-     * register has just been written to (in which case, all goes up for some
-     * reason) */
-    if (ppu->stat_written) {
-        ppu->stat_mode = true;
-        ppu->stat_written = false;
-    } else {
-        _calculate_stat_mode(ppu);
-    }
-
     /* see the status */
     switch (ppu->mode) {
         case PPU_HBLANK:
@@ -589,6 +573,16 @@ ppu_cycle(ppu_t *ppu)
             break;
         default:
             assert(false);
+    }
+
+    /* calculate STAT mode line based on current PPU mode, and whether the STAT
+     * register has just been written to (in which case, all goes up for some
+     * reason) */
+    if (ppu->stat_written) {
+        ppu->stat_mode = true;
+        ppu->stat_written = false;
+    } else {
+        _calculate_stat_mode(ppu);
     }
 
     /* check LY value after calculations */

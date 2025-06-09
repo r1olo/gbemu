@@ -168,8 +168,7 @@ enum ppu_mode {
 enum ppu_fetcher_mode {
     PPU_FETCHER_FETCH,
     PPU_FETCHER_TILE_LOW,
-    PPU_FETCHER_TILE_HIGH,
-    PPU_FETCHER_PUSH,
+    PPU_FETCHER_TILE_HIGH_PUSH,
     PPU_FETCHER_SLEEP,
 };
 

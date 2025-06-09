@@ -17,9 +17,6 @@
         abort();                                                    \
     } while (0)
 
-/* this is for filling a switch's default path */
-#define unreachable()   __builtin_unreachable()
-
 /* this is for converting a number to a bool */
 #define to_bool(x)      (!!(x))
 
