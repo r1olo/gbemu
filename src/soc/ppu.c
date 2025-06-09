@@ -120,6 +120,7 @@ _go_to_hblank(ppu_t *ppu)
     /* get ready for HBLANK */
     ppu->mode = PPU_HBLANK;
     ppu->cycles_to_waste = 375 - ppu->render_cycles;
+    ppu->hblank_int_avail = false;
 }
 
 static inline void
@@ -467,9 +468,8 @@ _ppu_pusher(ppu_t *ppu)
 
     /* if we just started (offscreen lx == 0), first discard first (SCX % 8)
      * pixels */
-    if (ppu->lx == 0 && (ppu->scx % 8) != old_bg_queue_idx) {
+    if (ppu->lx == 0 && (ppu->scx % 8) != old_bg_queue_idx)
         return;
-    }
 
     /* actually push pixel if lx >= 8 */
     if (ppu->lx >= 8) 
@@ -489,15 +489,24 @@ _ppu_render(ppu_t *ppu)
      * queue push immediately */
     _ppu_fetcher(ppu);
 
+    /* increase render cycles */
+    ++ppu->render_cycles;
+
+    /* if LX is 168, we performed a bogus fetch but we better not call the
+     * pusher - the screen is NOT 161 pixels wide */
+    if (ppu->lx > 167) {
+        _go_to_hblank(ppu);
+        return;
+    }
+
     /* Pusher/LCD is clocked when:
      *      - BG queue is not empty
      *      - Sprite is not hit
      *      - LX is greater or equal than 8 (actually the pusher is clocked if
      *        LX < 8, except the LCD is not - so called offscreen pixel push)
      */
-    if (!_is_bg_queue_empty(ppu) && !ppu->sprite_hit) {
+    if (!_is_bg_queue_empty(ppu) && !ppu->sprite_hit)
         _ppu_pusher(ppu);
-    }
 
     /* check for sprites in the current X value if none is hit currently */
     for (size_t i = ppu->next_obj_to_check;
@@ -509,13 +518,6 @@ _ppu_render(ppu_t *ppu)
             break;
         }
     }
-
-    /* increase render cycles */
-    ++ppu->render_cycles;
-
-    /* if LX goes to 168, we can start the HBLANK phase */
-    if (ppu->lx > 167)
-        _go_to_hblank(ppu);
 }
 
 static inline void
@@ -526,6 +528,11 @@ _calculate_stat_mode(ppu_t *ppu)
     bool stat_int = false; 
     switch (ppu->mode) {
         case PPU_HBLANK:
+            /* HBLANK must wait 1 cycle first */
+            if (!ppu->hblank_int_avail) {
+                ppu->hblank_int_avail = true;
+                break;
+            }
             stat_int = ppu->hblank_int_enabled;
             break;
         case PPU_VBLANK:
@@ -629,6 +636,9 @@ ppu_init(ppu_t *ppu, soc_t *soc)
     /* set initial interrupt sources */
     ppu->lyc_int_enabled = ppu->oam_int_enabled = false;
     ppu->vblank_int_enabled = ppu->hblank_int_enabled = false;
+
+    /* the hblank interrupt is delayed by one cycle */
+    ppu->hblank_int_avail = false;
 
     /* fill the screen with white pixels */
     memset(ppu->screen, 0xFF, SCREEN_HEIGHT * SCREEN_WIDTH);

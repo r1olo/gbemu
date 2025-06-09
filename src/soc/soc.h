@@ -225,6 +225,10 @@ typedef struct ppu {
     bool lyc_int_enabled, oam_int_enabled,
          vblank_int_enabled, hblank_int_enabled;
 
+    /* this is needed for the ***undocumented*** 1-cycle delay between the LY
+     * increase and the stat mode 0 interrupt */
+    bool hblank_int_avail;
+
     /* sprite store with X coords (matchers) */
     obj_store_entry_t objs[10];
 
